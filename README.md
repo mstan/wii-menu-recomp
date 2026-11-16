@@ -1,33 +1,74 @@
 # Wii Menu Recomp
 
-Wii Menu consumer for the pinned [wiillr engine](https://github.com/mstan/wiillr).
-Original system files, console keys, installed channels and generated guest code
-are external inputs and are never included in this repository.
+The Wii Menu as a native desktop application, with its own startup launcher,
+system-data import, controller assignments and peripheral settings. This
+repository owns the Menu's presentation and release configuration and pins the
+[wiillr engine](https://github.com/mstan/wiillr) as a Git submodule.
 
-This development branch adds an optional **Adaptive channel grid** mod. It keeps
-three rows and changes the column count as the Fit-to-screen window is resized:
-two columns in portrait, six or seven in wider desktop windows. It reuses the
-original artwork and GUI objects, preserves native slot identities and NAND
-ordering, and keeps stock presentation available. Channel rearrangement is
-disabled while the experiment is active. Other Menu screens retain their original
-layouts; Android support is not implied. Owner visual review is pending.
+Provide your own supported Wii Menu 4.3U NAND backup or extracted system folder.
+Firmware, console keys, installed channel content and generated guest code are
+external inputs. Preserve your managed NAND and per-user settings when updating.
 
-Neighboring pages peek through at the edges. Paging uses the original Menu's
-sliding animation, while the bottom controls and clock keep their proportions
-as the window changes shape.
+![Wii Menu launcher](docs/images/wii-menu-launcher.png)
 
-Initialize the engine submodule, then use the local platform toolchain:
+![Original Wii Menu channel grid](docs/images/wii-menu-running.png)
+
+## Adaptive Fit to screen
+
+Enable **Adaptive channel grid (experimental)** in **Mods** and select **Fit to
+screen**, then resize the window. The original three rows remain, with two
+columns in portrait and up to eight in wider windows. Neighboring columns peek
+through at the sides, and paging uses the original sliding animation. Channels
+keep their original identities and NAND order.
+
+The pointer, clock and bottom controls retain their proportions. Channel frames
+blend with the original backdrop. Stock presentation remains available; channel
+rearrangement is disabled while the adaptive mod is active. Other Menu screens
+retain their original layouts. Android support is not implied.
+
+![Fit to screen in an ultrawide window](docs/images/wii-menu-fit-wide.png)
+
+<img src="docs/images/wii-menu-fit-portrait.png" width="320" alt="Fit to screen with two columns and three rows in a portrait window">
+
+[Setup, controls and peripherals](https://github.com/mstan/wiillr/blob/69244f5de1a203f6bcb5bf02281f1d99f5dca689/docs/wii-menu.md)
+include four Wii Remote assignments, two USB ports and an SD Card slot. Keyboard
+typing uses the USB keyboard peripheral independently of Wii Remote buttons.
+
+## Local builds
 
 ```sh
-git submodule update --init --recursive
-python tools/build.py --version 0.1.0-adaptive --inputs-dir /path/to/qualified-inputs --build-dir /path/to/build --output-dir /path/to/dist --jobs 2
+git clone --recurse-submodules git@github.com:mstan/wii-menu-recomp.git
+cd wii-menu-recomp
 ```
 
-The command selects this consumer's provider and the Wii Menu product. The pinned
-engine's [build guide](https://github.com/mstan/wiillr/blob/b187ae905556df9412f0dfcd2e159d463473e9a5/docs/building.md) describes Windows, Linux and macOS
-dependencies and the private qualified input bundle. Builds run locally.
+Use the matching native toolchain and a qualified private input bundle, described
+in the engine's [build guide](https://github.com/mstan/wiillr/blob/69244f5de1a203f6bcb5bf02281f1d99f5dca689/docs/building.md).
 
-The provider is original MIT-licensed code. Reverse-engineering references and
-version identities are documented in the engine's
-[Menu annotation guide](https://github.com/mstan/wiillr/blob/b187ae905556df9412f0dfcd2e159d463473e9a5/docs/wii-menu-references.md). Native saves and
-explicit player preferences must be preserved when updating.
+Windows PowerShell:
+
+```powershell
+./tools/build-windows.ps1 --inputs-dir G:/wiillr-inputs --build-dir G:/wii-menu-build --output-dir G:/wii-menu-dist --jobs 2
+```
+
+Linux:
+
+```sh
+bash tools/build-linux.sh --inputs-dir /path/to/inputs --build-dir /path/to/build --output-dir /path/to/dist --jobs 2
+```
+
+macOS:
+
+```sh
+bash tools/build-macos.sh --inputs-dir /path/to/inputs --build-dir /path/to/build --output-dir /path/to/dist --jobs 2
+```
+
+`product.json` owns the product identity and default version. `tools/build.py`
+selects this consumer's provider and delegates compilation to the pinned engine;
+`tools/package.py` packages explicit outputs with the consumer's documentation
+and required source/license notices. Builds run locally. The adaptive preview
+archive is qualified on Windows x86_64; Linux and macOS scripts are provided,
+with native builds and runtime qualification on those hosts still pending.
+
+The provider is original [MIT-licensed code](LICENSE). The engine's
+[Menu annotation guide](https://github.com/mstan/wiillr/blob/69244f5de1a203f6bcb5bf02281f1d99f5dca689/docs/wii-menu-references.md)
+records the original-version identities and reverse-engineering references.
