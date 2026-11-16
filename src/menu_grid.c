@@ -13,9 +13,10 @@
 #include <stdlib.h>
 
 enum {COMMON=0x813aaa38,REFRESH=0x813ac948,RESTART_MODULES=0x813aeaf8,
-      GET_SCENE=0x8140b138,INIT_ARROW=0x8139ce28,ENCODED=0x10000};
-typedef struct {uint32_t pane,component;float x,y,sx,sy;uint8_t visible,trigger;} Slot;
+      MAKE_LIST=0x813ac9d0,GET_SCENE=0x8140b138,INIT_ARROW=0x8139ce28,ENCODED=0x10000};
+typedef struct {uint32_t pane,component;float x,y,sx,sy;uint8_t visible,trigger;int flat;} Slot;
 typedef struct {uint32_t pane;float sx,sy;} Root;
+typedef struct {uint32_t pane;float x,y,sx,sy,gy;unsigned kind;} Footer;
 static bool enabled,fit=true;
 static bool return_anchor_valid;
 static unsigned return_anchor;
@@ -23,8 +24,10 @@ static unsigned width=1280,height=720;
 static struct {
     CPUState* cpu;uint32_t scene,layout;Slot slots[3][12];Root roots[192];unsigned root_count;
     unsigned columns,page,pages,first,count,carrier,anchor;float world_width,sx,sy,gap_x,step_x,step_y;
-    bool ready,refresh,arrows,refresh_modules;int selected;
-    uint64_t next_scroll;
+    bool ready,refresh,arrows,refresh_modules,loaded;int selected;
+    uint32_t hidden,clock_anchor;unsigned shown[36],shown_count;float bank_x[3];
+    struct {bool active;unsigned target,carrier;int direction;float progress;} scroll;
+    Footer footer[8];unsigned footer_count;
     struct {bool active;unsigned stage;uint32_t lr,sp,object,button;} call;
 } grid;
 
@@ -46,14 +49,22 @@ static int name_slot(const char* n,int* bank) {
     int index=(n[6]-'0')*10+n[7]-'0'-1;if(index<0 || index>=12)return -1;
     *bank=n[5]-'b';return index;
 }
-static bool visible(unsigned flat) {return flat>=grid.first && flat<grid.first+grid.count && flat<48;}
+static void tile_position(unsigned flat,float* x,float* y);
+static bool in_extent(unsigned flat,float margin) {
+    if(flat>=48 || !grid.columns)return false;
+    float x,y;tile_position(flat,&x,&y);(void)y;
+    return x+88.f*grid.sx>-grid.world_width*.5f-margin && x-88.f*grid.sx<grid.world_width*.5f+margin;
+}
+static bool visible(unsigned flat) {return in_extent(flat,0);}
 static int flat_for(int bank,int index) {
-    const int page=(int)grid.carrier+bank-1;
-    return page>=0 && page<4?page*12+index:-1;
+    return grid.slots[bank][index].flat;
 }
 static bool active(CPUState* c) {
     return enabled && fit && grid.ready && grid.cpu==c && word(c,grid.scene)==0x8164e0b8 &&
         word(c,grid.scene+0x68)==grid.layout;
+}
+static bool owned(CPUState* c) {
+    return grid.ready && grid.cpu==c && word(c,grid.scene)==0x8164e0b8 && word(c,grid.scene+0x68)==grid.layout;
 }
 static int result(CPUState* c,uint32_t value) {c->gpr[3]=value;c->pc=c->lr;++c->cycles;return 1;}
 static void restore(CPUState* c) {
@@ -65,6 +76,12 @@ static void restore(CPUState* c) {
     }
     for(unsigned i=0;i<grid.root_count;i++) {
         Root* r=&grid.roots[i];put(c,r->pane+0x44,r->sx);put(c,r->pane+0x48,r->sy);
+    }
+    uint32_t object=word(c,grid.scene+0x58),current=word(c,grid.scene+0xc8),link=word(c,grid.scene+0x60)&0xffff;
+    for(unsigned n=0;object && n<49;n++) {
+        int bank=(int)word(c,object+0x1c)-(int)current+1;unsigned index=word(c,object+0x20);
+        mem_write32(c,object+0x28,bank>=0 && bank<3 && index<12?grid.slots[bank][index].pane:grid.hidden);
+        object=word(c,object+link+4);
     }
 }
 void wii_menu_grid_reset(void) {memset(&grid,0,sizeof grid);grid.selected=-1;}
@@ -101,9 +118,12 @@ static bool bind_scene(CPUState* c,uint32_t scene) {
     uint32_t node=word(c,gui+0x18);unsigned found=0;
     for(unsigned visited=0;node && visited<128;visited++) {
         const uint32_t pane=word(c,node),component=word(c,node+4);const char* name=(const char*)ptr(c,pane+0xb4,17);
+        if(name && !strcmp(name,"Picture_16"))grid.hidden=pane;
+        if(name && !strcmp(name,"N_Clock1"))grid.clock_anchor=pane;
         int bank,index;if(name && memchr(name,0,17) && (index=name_slot(name,&bank))>=0) {
             if(word(c,component+0x94)!=pane || grid.slots[bank][index].pane)return false;
-            Slot* s=&grid.slots[bank][index];s->pane=pane;s->component=component;
+            Slot* s=&grid.slots[bank][index];s->pane=pane;s->component=component;s->flat=-1;
+            grid.bank_x[bank]=real(c,word(c,pane+0xc)+0x90);
             s->x=real(c,pane+0x2c);s->y=real(c,pane+0x30);s->sx=real(c,pane+0x44);s->sy=real(c,pane+0x48);
             s->visible=word(c,pane+0xcc)&1;s->trigger=word(c,component+0x7c)>>24;++found;
         }
@@ -116,6 +136,7 @@ static void geometry(CPUState* c) {
     unsigned columns=(unsigned)floorf((float)width/height*2.8f+0.1f);
     if(columns<2)columns=2;
     if(columns>8)columns=8;
+    if(grid.scroll.active)columns=grid.columns;
     if(columns!=grid.columns) {
         /* Keep the first displayed channel nearby when the capacity changes. */
         grid.page=grid.anchor/(columns*3);grid.columns=columns;grid.arrows=true;
@@ -123,8 +144,10 @@ static void geometry(CPUState* c) {
     grid.pages=(48+columns*3-1)/(columns*3);if(grid.page>=grid.pages)grid.page=grid.pages-1;
     grid.first=grid.page*columns*3;grid.count=48-grid.first;if(grid.count>columns*3)grid.count=columns*3;
     const unsigned carrier=(grid.first+(grid.count-1)/2)/12;
-    if(carrier!=word(c,grid.scene+0xc8))grid.refresh=true;
-    grid.carrier=carrier;
+    if(!grid.scroll.active) {
+        if(carrier!=word(c,grid.scene+0xc8))grid.refresh=true;
+        grid.carrier=carrier;
+    }
     const float aspect=(float)width/height;
     grid.world_width=real(c,grid.scene+0xec)>1.1f?832.f:608.f;
     const float gap=11.f,card_aspect=1.725f;
@@ -134,9 +157,109 @@ static void geometry(CPUState* c) {
     grid.step_x=170.f*grid.sx+grid.gap_x;grid.step_y=card_h+gap;
 }
 static void tile_position(unsigned flat,float* x,float* y) {
-    unsigned local=flat-grid.first;
-    *x=((int)(local%grid.columns)-(grid.columns-1)*.5f)*grid.step_x;
+    unsigned capacity=grid.columns*3,local=flat%capacity,page=flat/capacity;
+    float pages=(int)page-(int)grid.page;
+    if(grid.scroll.active)pages-=grid.scroll.direction*grid.scroll.progress;
+    *x=(((int)(local%grid.columns)-(grid.columns-1)*.5f)+pages*grid.columns)*grid.step_x;
     *y=148.f-(local/grid.columns)*grid.step_y;
+}
+static void map_slots(CPUState* c) {
+    grid.shown_count=0;
+    for(unsigned flat=0;flat<48;flat++)if(in_extent(flat,grid.step_x*.75f) && grid.shown_count<36)
+        grid.shown[grid.shown_count++]=flat;
+    for(unsigned b=0;b<3;b++)for(unsigned i=0;i<12;i++) {
+        Slot* s=&grid.slots[b][i];bool keep=false;
+        for(unsigned n=0;n<grid.shown_count;n++)if(s->flat==(int)grid.shown[n])keep=true;
+        if(!keep)s->flat=-1;
+    }
+    for(unsigned n=0;n<grid.shown_count;n++) {
+        bool found=false;Slot* free_slot=NULL;
+        for(unsigned b=0;b<3;b++)for(unsigned i=0;i<12;i++) {
+            Slot* s=&grid.slots[b][i];if(s->flat==(int)grid.shown[n])found=true;
+            if(s->flat<0 && !free_slot)free_slot=s;
+        }
+        if(!found && free_slot)free_slot->flat=grid.shown[n];
+    }
+    for(unsigned b=0;b<3;b++)for(unsigned i=0;i<12;i++) {
+        Slot* s=&grid.slots[b][i];bool show=s->flat>=0;
+        visibility(c,s->pane,show);
+        mem_write8(c,s->component+0x7c,show && (unsigned)s->flat/(grid.columns*3)==grid.page && !grid.scroll.active);
+    }
+}
+static uint32_t pane_for(unsigned flat) {
+    for(unsigned b=0;b<3;b++)for(unsigned i=0;i<12;i++)
+        if(grid.slots[b][i].flat==(int)flat)return grid.slots[b][i].pane;
+    return grid.hidden;
+}
+static uint32_t find_pane(CPUState* c,uint32_t pane,const char* name,unsigned depth) {
+    if(!pane || depth>16)return 0;
+    const char* n=(const char*)ptr(c,pane+0xb4,17);
+    if(n && memchr(n,0,17) && !strcmp(n,name))return pane;
+    uint32_t link=word(c,pane+0x14);
+    for(unsigned visited=0;link && link!=pane+0x14 && visited<512;visited++) {
+        uint32_t found=find_pane(c,link-4,name,depth+1);if(found)return found;
+        link=word(c,link);
+    }
+    return 0;
+}
+static void footer_add(CPUState* c,uint32_t pane,unsigned kind) {
+    if(!pane || !ptr(c,pane,0xd4) || grid.footer_count>=8)return;
+    for(unsigned n=0;n<grid.footer_count;n++)if(grid.footer[n].pane==pane)return;
+    grid.footer[grid.footer_count++]=(Footer){pane,real(c,pane+0x2c),real(c,pane+0x30),
+        real(c,pane+0x44),real(c,pane+0x48),real(c,pane+0xa0),kind};
+}
+static void bind_footer(CPUState* c,uint32_t button) {
+    uint32_t layout=word(c,button+0x58),root=word(c,layout+0x14);
+    footer_add(c,find_pane(c,root,"N_BtnL",0),1);
+    footer_add(c,find_pane(c,root,"N_BtnR",0),2);
+    footer_add(c,find_pane(c,root,"N_ArwL",0),5);
+    footer_add(c,find_pane(c,root,"N_ArwR",0),5);
+    footer_add(c,word(c,word(c,button+0x70)+0x14),4); /* embedded SD menu layout */
+    footer_add(c,word(c,word(c,button+0x64)+0x14),4); /* optional system button */
+    uint32_t clock_root=word(c,word(c,grid.scene+0x134)+0x14);
+    footer_add(c,find_pane(c,clock_root,"N_WiiMenu",0),3);
+}
+static void footer_factors(float* sx,float* sy) {
+    float aspect=(float)width/height;*sy=fminf(1.f,aspect/1.4f);*sx=*sy*(16.f/9.f)/aspect;
+}
+static bool footer_transform(CPUState* c,uint32_t pane) {
+    for(unsigned n=0;n<grid.footer_count;n++) {
+        Footer* f=&grid.footer[n];if(f->pane!=pane)continue;
+        unsigned phase=word(c,grid.scene+0xc0);
+        if(!enabled || !fit || (phase>3 && (phase<10 || phase>13))) {
+            put(c,pane+0x44,f->sx);put(c,pane+0x48,f->sy);
+            if(f->kind!=3){put(c,pane+0x2c,f->x);put(c,pane+0x30,f->y);}return true;
+        }
+        float sx,sy;footer_factors(&sx,&sy);
+        uint32_t parent=word(c,pane+0xc);
+        if(f->kind<=2) {
+            float px=real(c,parent+0x84),py=real(c,parent+0x98),tx=real(c,parent+0x90),ty=real(c,parent+0xa0);
+            if(fabsf(px)<.01f || fabsf(py)<.01f)return true;
+            float edge=f->kind==1?-grid.world_width*.5f:grid.world_width*.5f;
+            float x=edge+(tx+f->x*px-edge)*sx;
+            float y=-228.f+(ty+f->y*py+228.f)*sy;
+            put(c,pane+0x2c,(x-tx)/px);put(c,pane+0x30,(y-ty)/py);
+            put(c,pane+0x44,f->sx*sx);put(c,pane+0x48,f->sy*sy);
+        } else if(f->kind==5) {
+            float py=real(c,parent+0x98);if(fabsf(py)>.01f)put(c,pane+0x30,(f->gy-real(c,parent+0xa0))/py);
+        } else if(f->kind==6) {
+            float px=real(c,parent+0x84),py=real(c,parent+0x98),tx=real(c,parent+0x90),ty=real(c,parent+0xa0);
+            if(fabsf(px)>.01f)put(c,pane+0x2c,((tx+f->x*px)*sx-tx)/px);
+            if(fabsf(py)>.01f)put(c,pane+0x30,(-228.f+(f->gy+228.f)*sy-ty)/py);
+            put(c,pane+0x44,f->sx*sx);put(c,pane+0x48,f->sy*sy);
+        } else {
+            put(c,pane+0x44,f->sx*sx);put(c,pane+0x48,f->sy*sy);
+            if(f->kind==4) {
+                put(c,pane+0x2c,-grid.world_width*.5f+(f->x+grid.world_width*.5f)*sx);
+                put(c,pane+0x30,-228.f+(f->y+228.f)*sy);
+            } else if(grid.clock_anchor) {
+                float py=real(c,parent+0x98),ty=real(c,parent+0xa0);
+                if(fabsf(py)>.01f)put(c,pane+0x30,(-228.f+(real(c,grid.clock_anchor+0xa0)+228.f)*sy-ty)/py);
+            }
+        }
+        return true;
+    }
+    return false;
 }
 /* The original helper calls run on the original guest stack and scheduler.
  * Reenter this seam after each return, then execute the unmodified common body.
@@ -148,13 +271,18 @@ static int common(CPUState* c) {
     if(grid.call.active) {
         if(c->gpr[1]!=grid.call.sp)return 0; /* Other scheduled thread. */
         const unsigned stage=grid.call.stage;
+        if(stage>=10 && stage<13)return guest_call(c,MAKE_LIST,grid.scene,stage-9,0,stage+1);
+        if(stage==13){grid.loaded=true;return guest_call(c,REFRESH,grid.scene,grid.carrier,0,1);}
         if(stage==1 && grid.refresh_modules)return guest_call(c,RESTART_MODULES,grid.scene,0,0,2);
         if(stage<=2)return guest_call(c,GET_SCENE,word(c,0x81089008+0x64),5,0,3);
         if(stage==3) {
             grid.call.button=c->gpr[3];
+            if(grid.call.button)bind_footer(c,grid.call.button);
             if(grid.call.button)return guest_call(c,INIT_ARROW,grid.call.button,1,grid.page>0,4);
         }
         if(stage==4)return guest_call(c,INIT_ARROW,grid.call.button,0,grid.page+1<grid.pages,5);
+        if(stage==5)return guest_call(c,GET_SCENE,word(c,0x81089008+0x64),4,0,6);
+        if(stage==6)footer_add(c,find_pane(c,word(c,word(c,c->gpr[3]+0xd24)+0x14),"T_Day_b",0),6);
         c->lr=grid.call.lr;c->gpr[3]=grid.call.object;grid.call.active=false;
         mem_write8(c,grid.scene+0x100,grid.page>0);mem_write8(c,grid.scene+0x101,grid.page+1<grid.pages);
         grid.refresh_modules=false;grid.refresh=grid.arrows=false;
@@ -166,18 +294,16 @@ static int common(CPUState* c) {
         if(!bind_scene(c,scene))return 0;
     }
     geometry(c);
+    map_slots(c);
     const unsigned phase=word(c,scene+0xc0);
     if((phase==1 || phase==3) && (grid.refresh || grid.arrows)) {
         grid.call.active=true;grid.call.lr=c->lr;grid.call.sp=c->gpr[1];grid.call.object=scene;
+        if(!grid.loaded)return guest_call(c,MAKE_LIST,scene,0,0,10);
         if(grid.refresh) {
             mem_write32(c,scene+0xc8,grid.carrier);
             return guest_call(c,REFRESH,scene,grid.carrier,0,1);
         }
         return guest_call(c,GET_SCENE,word(c,0x81089008+0x64),5,0,3);
-    }
-    for(unsigned b=0;b<3;b++)for(unsigned i=0;i<12;i++) {
-        Slot* s=&grid.slots[b][i];int flat=flat_for(b,i);bool show=flat>=0 && visible(flat);
-        visibility(c,s->pane,show);mem_write8(c,s->component+0x7c,show);
     }
     /* Cache the roots owned by the current channel list. The C ut::List has
      * object pointers and {prev,next} links, unlike Pane's C++ sentinel list. */
@@ -185,6 +311,7 @@ static int common(CPUState* c) {
     uint32_t object=word(c,scene+0x58);unsigned link=word(c,scene+0x60)&0xffff;
     for(unsigned n=0;object && n<49;n++) {
         if(word(c,object+0x1c)<4 && word(c,object+0x20)<12) {
+            mem_write32(c,object+0x28,pane_for(word(c,object+0x1c)*12+word(c,object+0x20)));
             const unsigned offsets[]={0x30,0x38,0x40,0x48,0x60};
             for(unsigned j=0;j<5;j++) {
                 uint32_t layout=word(c,object+offsets[j]),pane=layout?word(c,layout+0x14):0;
@@ -195,14 +322,25 @@ static int common(CPUState* c) {
         }
         object=word(c,object+link+4);
     }
+    const unsigned disc_layers[]={0x84,0x9c};
+    for(unsigned n=0;n<2;n++) {
+        uint32_t disc=word(c,grid.scene+disc_layers[n]),disc_root=disc?word(c,disc+0x14):0;
+        if(disc_root && grid.root_count<192)grid.roots[grid.root_count++]=(Root){disc_root,real(c,scene+0xec),1.f};
+    }
     return 0;
 }
 void wii_menu_grid_transform(CPUState* c,uint32_t pane) {
+    if(owned(c) && footer_transform(c,pane))return;
     if(!active(c))return;
     for(unsigned b=0;b<3;b++)for(unsigned i=0;i<12;i++) {
         Slot* s=&grid.slots[b][i];if(pane!=s->pane)continue;
         const int flat=flat_for(b,i);if(flat<0 || !visible(flat))return;
         const uint32_t parent=word(c,pane+0xc);float x,y;tile_position(flat,&x,&y);
+        if(grid.scroll.active) {
+            float shift=real(c,parent+0x90)-grid.bank_x[b],span=512.f*real(c,grid.scene+0xec);
+            if(span>0)grid.scroll.progress=fminf(1.f,fmaxf(0.f,-grid.scroll.direction*shift/span));
+            tile_position(flat,&x,&y);
+        }
         const float px=real(c,parent+0x84),py=real(c,parent+0x98);
         if(!isfinite(px) || !isfinite(py) || fabsf(px)<.01f || fabsf(py)<.01f)return;
         put(c,pane+0x2c,(x-real(c,parent+0x90))/px);put(c,pane+0x30,(y-real(c,parent+0xa0))/py);
@@ -224,7 +362,13 @@ int wii_menu_grid_entry(CPUState* c,uint32_t pc) {
     if(!active(c))return 0;
     if(pc==0x813b01b8 && word(c,c->gpr[3]+0xc)==grid.scene && !c->gpr[5])return result(c,0); /* No drag in experiment. */
     if(c->gpr[3]==grid.scene) {
+        if(pc==REFRESH && grid.scroll.active && (word(c,grid.scene+0xc0)==12 || word(c,grid.scene+0xc0)==13)) {
+            grid.page=grid.scroll.target;grid.anchor=grid.page*grid.columns*3;grid.carrier=grid.scroll.carrier;
+            grid.scroll.active=false;grid.arrows=true;geometry(c);map_slots(c);grid.refresh=false;
+        }
         if(pc==0x813ad55c)return result(c,c->gpr[4]<4 && c->gpr[5]<12 && visible(c->gpr[4]*12+c->gpr[5]));
+        if(pc==0x813ad69c)return result(c,c->gpr[4]<4 && c->gpr[5]<12 && pane_for(c->gpr[4]*12+c->gpr[5])!=grid.hidden);
+        if(pc==0x813ade6c && c->gpr[4]<4 && c->gpr[5]<12)return result(c,pane_for(c->gpr[4]*12+c->gpr[5]));
         if(pc==0x813ad39c)return result(c,0); /* No neighboring page decorations. */
         if(pc==0x813ace78 && (c->gpr[5]&0xffff0000u)==ENCODED) {
             unsigned flat=c->gpr[5]&0xffff;c->gpr[4]=flat/12;c->gpr[5]=flat%12;return 0;
@@ -232,7 +376,7 @@ int wii_menu_grid_entry(CPUState* c,uint32_t pc) {
         if(pc==0x813ae99c) {
             const char* n=(const char*)ptr(c,c->gpr[4],17);int b,i;
             if(n && memchr(n,0,17) && (i=name_slot(n,&b))>=0) {
-                int flat=flat_for(b,i);return result(c,flat>=0 && visible(flat)?ENCODED|(unsigned)flat:UINT32_MAX);
+                int flat=flat_for(b,i);return result(c,flat>=0 && visible(flat) && (unsigned)flat/(grid.columns*3)==grid.page && !grid.scroll.active?ENCODED|(unsigned)flat:UINT32_MAX);
             }
             return result(c,UINT32_MAX);
         }
@@ -242,17 +386,30 @@ int wii_menu_grid_entry(CPUState* c,uint32_t pc) {
         }
         if((pc==0x813adf18 || pc==0x813adf48) && grid.selected>=0 && word(c,grid.scene+0xc0)>=7 &&
            c->gpr[4]==(unsigned)grid.selected%12) {
-            int bank=grid.selected/12-(int)grid.carrier+1;
-            if(bank>=0 && bank<3)return result(c,grid.slots[bank][c->gpr[4]].pane);
+            return result(c,pane_for(grid.selected));
         }
         if(pc==0x813ad8e0) {
-            grid.next_scroll=c->cycles+240000000;
-            if(c->gpr[4]==12 && grid.page)grid.page--;
-            else if(c->gpr[4]==13 && grid.page+1<grid.pages)grid.page++;
-            grid.anchor=grid.page*grid.columns*3;grid.refresh=grid.arrows=grid.refresh_modules=true;
-            mem_write32(c,grid.scene+0xc0,1);return result(c,0);
+            int direction=c->gpr[4]==12?-1:1;
+            int target=(int)grid.page+direction;
+            if(target<0 || target>=(int)grid.pages)return result(c,0);
+            grid.scroll.active=true;grid.scroll.target=target;grid.scroll.direction=direction;grid.scroll.progress=0;
+            unsigned first=target*grid.columns*3,count=48-first;if(count>grid.columns*3)count=grid.columns*3;
+            grid.scroll.carrier=(first+(count-1)/2)/12;
+            return 0; /* Original 20-frame brlan scroll owns timing/easing. */
         }
-        if(pc==0x813ad8b8 && c->cycles<grid.next_scroll)return result(c,0);
+    }
+    if(grid.scroll.active && c->gpr[31]==grid.scene) {
+        if(pc==0x813ac630 || pc==0x813ac674) {
+            c->gpr[pc==0x813ac630?0:5]=grid.scroll.carrier-grid.scroll.direction;
+            c->pc=pc+4;++c->cycles;return 1;
+        }
+        if(pc==0x813ac63c || pc==0x813ac688) {
+            unsigned left=grid.scroll.target,right=pc==0x813ac63c?0:grid.pages-1;
+            unsigned condition=left<right?8:left>right?4:2;
+            c->cr=(c->cr&0x0fffffffu)|((condition|((c->xer>>31)&1))<<28);
+            if(pc==0x813ac688){c->pc=pc+4;++c->cycles;return 1;}
+            return 0;
+        }
     }
     /* Only page-bound comparisons see virtual pages. Original arrays, title
      * selection and loading continue to receive their genuine stock indices. */
@@ -273,27 +430,82 @@ int wii_menu_grid_status(char* out,size_t capacity) {
     return snprintf(out,capacity,"{\"ok\":true,\"enabled\":%s,\"ready\":%s,\"columns\":%u,\"rows\":3,\"page\":%u,\"pages\":%u,\"first\":%u,\"count\":%u,\"scene\":%u,\"width\":%u,\"height\":%u}",
         enabled?"true":"false",grid.ready?"true":"false",grid.columns,grid.page,grid.pages,grid.first,grid.count,grid.scene,width,height);
 }
+static int footer_sheet(CPUState* c,uint32_t pane) {
+    const char* n=(const char*)ptr(c,pane+0xb4,17);if(!n || !memchr(n,0,17))return 0;
+    if((!strncmp(n,"board",5) && strlen(n)==6) || (!strncmp(n,"Shade",5) && strlen(n)==6) ||
+       (!strncmp(n,"Line",4) && strlen(n)==5))return n[strlen(n)-1]=='2'?1:-1;
+    return 0;
+}
+static bool clock_picture(CPUState* c,uint32_t pane) {
+    for(unsigned depth=0;pane && depth<16;depth++,pane=word(c,pane+0xc))
+        for(unsigned n=0;n<grid.footer_count;n++)
+            if(grid.footer[n].kind==3 && grid.footer[n].pane==pane)return true;
+    return false;
+}
 int wii_menu_grid_picture_tiles(CPUState* c,uint32_t pane) {
     if(!active(c))return 0;
+    if(clock_picture(c,pane))return 1;
     uint32_t root=word(c,grid.layout+0x14),ancestor=pane;
     for(unsigned n=0;n<8 && ancestor && ancestor!=root;n++)ancestor=word(c,ancestor+0xc);
     if(ancestor!=root)return 0;
     const char* name=(const char*)ptr(c,pane+0xb4,17);
     if(!name || !memchr(name,0,17))return 0;
-    if(!strcmp(name,"ChMask"))return -1;
-    if(!strncmp(name,"BaseMask",8))return !strcmp(name,"BaseMask2")?(int)grid.count:-1;
-    if(!strncmp(name,"Edge",4))return !strcmp(name,"Edge2")?(int)grid.count:-1;
-    if(!strncmp(name,"Picture_0",9))return !strcmp(name,"Picture_00")?(int)grid.count:-1;
+    int footer=footer_sheet(c,pane);if(footer)return footer>0?3:-1;
+    if(!strncmp(name,"BaseMask",8))return !strcmp(name,"BaseMask2")?(int)grid.shown_count:-1;
+    if(!strncmp(name,"Edge",4))return !strcmp(name,"Edge2")?(int)grid.shown_count:-1;
+    if(!strncmp(name,"Picture_0",9))return !strcmp(name,"Picture_00")?(int)grid.shown_count:-1;
     return 0;
 }
 static float interpolate(float a,float b,float d,float e,float u,float v) {
     return (a+(b-a)*u)*(1-v)+(d+(e-d)*u)*v;
 }
+static void sample_quad(const WiiMenuPicture* original,WiiMenuPicture* out,unsigned v,float u,float t) {
+    for(unsigned a=0;a<2;a++) {
+        out->vertices[v].uv[a]=interpolate(original->vertices[0].uv[a],original->vertices[1].uv[a],original->vertices[3].uv[a],original->vertices[2].uv[a],u,t);
+        out->extra_uv[v][a]=interpolate(original->extra_uv[0][a],original->extra_uv[1][a],original->extra_uv[3][a],original->extra_uv[2][a],u,t);
+        for(unsigned j=0;j<7;j++)out->program_extra_uv[v][j][a]=interpolate(original->program_extra_uv[0][j][a],original->program_extra_uv[1][j][a],original->program_extra_uv[3][j][a],original->program_extra_uv[2][j][a],u,t);
+    }
+    for(unsigned a=0;a<4;a++)out->vertices[v].color[a]=interpolate(original->vertices[0].color[a],original->vertices[1].color[a],original->vertices[3].color[a],original->vertices[2].color[a],u,t);
+}
 void wii_menu_grid_picture_tile(CPUState* c,uint32_t pane,unsigned tile,WiiMenuPicture* out) {
-    if(!active(c) || tile>=grid.count)return;
+    if(!active(c))return;
     const WiiMenuPicture original=*out;
-    const unsigned source=(grid.first+tile)%12;
-    float x,y;tile_position(grid.first+tile,&x,&y);
+    if(clock_picture(c,pane)) {
+        /* The original three clocks move with their page anchors. Keep that
+         * motion within the center of the proportional footer, behind its
+         * side caps, instead of letting the numerals cross the buttons. */
+        float sx,sy;footer_factors(&sx,&sy);(void)sy;
+        float edge=fminf(.4f,.25f*sx);
+        int left=(int)ceilf(out->draw.x+out->draw.width*edge);
+        int right=(int)floorf(out->draw.x+out->draw.width*(1.f-edge));
+        int end=out->draw.clip_x+out->draw.clip_width;
+        if(left<out->draw.clip_x)left=out->draw.clip_x;
+        if(right>end)right=end;
+        out->draw.clip_x=left;out->draw.clip_width=right>left?right-left:0;
+        if(!out->draw.clip_width)out->skipped=1;
+        return;
+    }
+    if(footer_sheet(c,pane)>0) {
+        if(tile>=3)return;
+        float sx,sy;footer_factors(&sx,&sy);
+        const float px=original.draw.model_view[0],py=original.draw.model_view[5];
+        if(fabsf(px)<.01f || fabsf(py)<.01f){out->skipped=1;return;}
+        float end=fminf(grid.world_width*.4f,fabsf(px*(original.vertices[1].position[0]-original.vertices[0].position[0]))*.25f*sx);
+        float edges[4]={-grid.world_width*.5f,-grid.world_width*.5f+end,grid.world_width*.5f-end,grid.world_width*.5f};
+        const float uv[4]={0,.25f,.75f,1};const unsigned right[4]={0,1,1,0},bottom[4]={0,0,1,1};
+        for(unsigned v=0;v<4;v++) {
+            float u=uv[tile+right[v]],t=bottom[v];
+            float source_y=interpolate(original.vertices[0].position[1],original.vertices[1].position[1],original.vertices[3].position[1],original.vertices[2].position[1],u,t);
+            float world_y=py*source_y+original.draw.model_view[7];
+            out->vertices[v].position[0]=(edges[tile+right[v]]-original.draw.model_view[3])/px;
+            out->vertices[v].position[1]=(-228.f+(world_y+228.f)*sy-original.draw.model_view[7])/py;
+            sample_quad(&original,out,v,u,t);
+        }
+        return;
+    }
+    if(tile>=grid.shown_count)return;
+    const unsigned source=grid.shown[tile]%12;
+    float x,y;tile_position(grid.shown[tile],&x,&y);
     const float sx=out->draw.model_view[0],sy=out->draw.model_view[5];
     if(fabsf(sx)<.01f || fabsf(sy)<.01f){out->skipped=1;return;}
     x=(x-out->draw.model_view[3])/sx;y=(y-out->draw.model_view[7])/sy;
@@ -307,11 +519,6 @@ void wii_menu_grid_picture_tile(CPUState* c,uint32_t pane,unsigned tile,WiiMenuP
             float pos=interpolate(original.vertices[0].position[a],original.vertices[1].position[a],original.vertices[3].position[a],original.vertices[2].position[a],u,t);
             out->vertices[v].position[a]=(a?y:x)+(pos-center[a])*(a?grid.sy:grid.sx);
         }
-        for(unsigned a=0;a<2;a++) {
-            out->vertices[v].uv[a]=interpolate(original.vertices[0].uv[a],original.vertices[1].uv[a],original.vertices[3].uv[a],original.vertices[2].uv[a],u,t);
-            out->extra_uv[v][a]=interpolate(original.extra_uv[0][a],original.extra_uv[1][a],original.extra_uv[3][a],original.extra_uv[2][a],u,t);
-            for(unsigned j=0;j<7;j++)out->program_extra_uv[v][j][a]=interpolate(original.program_extra_uv[0][j][a],original.program_extra_uv[1][j][a],original.program_extra_uv[3][j][a],original.program_extra_uv[2][j][a],u,t);
-        }
-        for(unsigned a=0;a<4;a++)out->vertices[v].color[a]=interpolate(original.vertices[0].color[a],original.vertices[1].color[a],original.vertices[3].color[a],original.vertices[2].color[a],u,t);
+        sample_quad(&original,out,v,u,t);
     }
 }

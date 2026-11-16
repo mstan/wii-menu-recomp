@@ -12,6 +12,10 @@ ordering, and keeps stock presentation available. Channel rearrangement is
 disabled while the experiment is active. Other Menu screens retain their original
 layouts; Android support is not implied. Owner visual review is pending.
 
+Neighboring pages peek through at the edges. Paging uses the original Menu's
+sliding animation, while the bottom controls and clock keep their proportions
+as the window changes shape.
+
 Initialize the engine submodule, then use the local platform toolchain:
 
 ```sh
@@ -20,10 +24,10 @@ python tools/build.py --version 0.1.0-adaptive --inputs-dir /path/to/qualified-i
 ```
 
 The command selects this consumer's provider and the Wii Menu product. The pinned
-engine's [build guide](wiillr/docs/building.md) describes Windows, Linux and macOS
+engine's [build guide](https://github.com/mstan/wiillr/blob/59c0f8198591fc8db59fffbd6006592313c68cf9/docs/building.md) describes Windows, Linux and macOS
 dependencies and the private qualified input bundle. Builds run locally.
 
 The provider is original MIT-licensed code. Reverse-engineering references and
 version identities are documented in the engine's
-[Menu annotation guide](wiillr/docs/wii-menu-references.md). Native saves and
+[Menu annotation guide](https://github.com/mstan/wiillr/blob/59c0f8198591fc8db59fffbd6006592313c68cf9/docs/wii-menu-references.md). Native saves and
 explicit player preferences must be preserved when updating.
