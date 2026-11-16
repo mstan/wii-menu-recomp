@@ -215,7 +215,8 @@ static void bind_footer(CPUState* c,uint32_t button) {
     footer_add(c,find_pane(c,root,"N_ArwL",0),5);
     footer_add(c,find_pane(c,root,"N_ArwR",0),5);
     footer_add(c,word(c,word(c,button+0x70)+0x14),4); /* embedded SD menu layout */
-    footer_add(c,word(c,word(c,button+0x64)+0x14),4); /* optional system button */
+    /* The opt-out layout is used by other scenes. Its hidden controls sit
+     * outside the viewport; scaling its root can pull them into the grid. */
     uint32_t clock_root=word(c,word(c,grid.scene+0x134)+0x14);
     footer_add(c,find_pane(c,clock_root,"N_WiiMenu",0),3);
 }

@@ -106,6 +106,14 @@ int main(void) {
     picture.draw.clip_width=640;picture.draw.clip_height=456;
     wii_menu_grid_picture_tile(&cpu,number,0,&picture);
     CHECK(picture.draw.clip_x>100 && picture.draw.clip_width<400 && picture.draw.clip_height==456);
+    /* Other scenes' opt-out controls must stay offscreen. Counter-scaling
+     * their root used to pull the hidden Stop button into ultrawide grids. */
+    unsigned button=0x80080000,optional=0x80079000,optional_root=0x8007a000;
+    mem_write32(&cpu,button+0x64,optional);mem_write32(&cpu,optional+0x14,optional_root);
+    put(&cpu,optional_root+0x44,1);put(&cpu,optional_root+0x48,1);
+    wii_menu_grid_extent(1680,720,true);frame();bind_footer(&cpu,button);
+    wii_menu_grid_transform(&cpu,optional_root);
+    CHECK(real(&cpu,optional_root+0x2c)==0 && real(&cpu,optional_root+0x44)==1 && real(&cpu,optional_root+0x48)==1);
     wii_menu_grid_configure(false);CHECK(real(&cpu,pane+0x44)==1.f && real(&cpu,pane+0x48)==1.f);
     cpu.gpr[3]=SCENE;cpu.gpr[4]=0;cpu.gpr[5]=0;CHECK(!wii_menu_grid_entry(&cpu,0x813ad55c));
     free(cpu.ram);puts("Menu grid mapping, paging, native continuations and stock restoration passed");return 0;
