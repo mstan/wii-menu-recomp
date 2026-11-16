@@ -28,6 +28,7 @@ static struct {
     uint32_t hidden,clock_anchor;unsigned shown[36],shown_count;float bank_x[3];
     struct {bool active;unsigned target,carrier;int direction;float progress;} scroll;
     Footer footer[8];unsigned footer_count;
+    uint32_t background_pane;bool background_ready;WiiMenuPicture background;
     struct {bool active;unsigned stage;uint32_t lr,sp,object,button;} call;
 } grid;
 
@@ -283,7 +284,13 @@ static int common(CPUState* c) {
         }
         if(stage==4)return guest_call(c,INIT_ARROW,grid.call.button,0,grid.page+1<grid.pages,5);
         if(stage==5)return guest_call(c,GET_SCENE,word(c,0x81089008+0x64),4,0,6);
-        if(stage==6)footer_add(c,find_pane(c,word(c,word(c,c->gpr[3]+0xd24)+0x14),"T_Day_b",0),6);
+        if(stage==6) {
+            uint32_t root=word(c,word(c,c->gpr[3]+0xd24)+0x14);
+            footer_add(c,find_pane(c,root,"T_Day_b",0),6);
+            uint32_t background=find_pane(c,root,"TopBack_b",0);
+            if(background!=grid.background_pane)grid.background_ready=false;
+            grid.background_pane=background;
+        }
         c->lr=grid.call.lr;c->gpr[3]=grid.call.object;grid.call.active=false;
         mem_write8(c,grid.scene+0x100,grid.page>0);mem_write8(c,grid.scene+0x101,grid.page+1<grid.pages);
         grid.refresh_modules=false;grid.refresh=grid.arrows=false;
@@ -443,8 +450,18 @@ static bool clock_picture(CPUState* c,uint32_t pane) {
             if(grid.footer[n].kind==3 && grid.footer[n].pane==pane)return true;
     return false;
 }
+static uint32_t cursor_picture(CPUState* c,uint32_t pane) {
+    unsigned w,h;if(!wii_menu_grid_aspect(&w,&h))return 0;
+    for(unsigned depth=0;pane && depth<12;depth++,pane=word(c,pane+0xc)) {
+        const char* name=(const char*)ptr(c,pane+0xb4,17);
+        if(name && memchr(name,0,17) && !strcmp(name,"N_Trans") &&
+           find_pane(c,pane,"N_Rot",0) && find_pane(c,pane,"N_SRot",0))return pane;
+    }
+    return 0;
+}
 int wii_menu_grid_picture_tiles(CPUState* c,uint32_t pane) {
     if(!active(c))return 0;
+    if(pane==grid.background_pane || cursor_picture(c,pane))return 1;
     if(clock_picture(c,pane))return 1;
     uint32_t root=word(c,grid.layout+0x14),ancestor=pane;
     for(unsigned n=0;n<8 && ancestor && ancestor!=root;n++)ancestor=word(c,ancestor+0xc);
@@ -452,7 +469,7 @@ int wii_menu_grid_picture_tiles(CPUState* c,uint32_t pane) {
     const char* name=(const char*)ptr(c,pane+0xb4,17);
     if(!name || !memchr(name,0,17))return 0;
     int footer=footer_sheet(c,pane);if(footer)return footer>0?3:-1;
-    if(!strncmp(name,"BaseMask",8))return !strcmp(name,"BaseMask2")?(int)grid.shown_count:-1;
+    if(!strncmp(name,"BaseMask",8))return !strcmp(name,"BaseMask2") && !grid.background_ready?(int)grid.shown_count:-1;
     if(!strncmp(name,"Edge",4))return !strcmp(name,"Edge2")?(int)grid.shown_count:-1;
     if(!strncmp(name,"Picture_0",9))return !strcmp(name,"Picture_00")?(int)grid.shown_count:-1;
     return 0;
@@ -468,9 +485,70 @@ static void sample_quad(const WiiMenuPicture* original,WiiMenuPicture* out,unsig
     }
     for(unsigned a=0;a<4;a++)out->vertices[v].color[a]=interpolate(original->vertices[0].color[a],original->vertices[1].color[a],original->vertices[3].color[a],original->vertices[2].color[a],u,t);
 }
+static bool screen_point(const WiiMenuPicture* picture,unsigned v,float* x,float* y) {
+    const float* m=picture->draw.model_view;const float* p=picture->draw.projection;
+    const float* pos=picture->vertices[v].position;float world[4]={0,0,0,1};
+    for(unsigned a=0;a<3;a++)world[a]=m[a*4]*pos[0]+m[a*4+1]*pos[1]+m[a*4+2]*pos[2]+m[a*4+3];
+    float clip[4]={0};for(unsigned a=0;a<4;a++)for(unsigned b=0;b<4;b++)clip[a]+=p[a*4+b]*world[b];
+    if(!isfinite(clip[3]) || fabsf(clip[3])<.000001f)return false;
+    *x=picture->draw.x+picture->draw.width*(clip[0]/clip[3]+1.f)*.5f;
+    *y=picture->draw.y+picture->draw.height*(1.f-clip[1]/clip[3])*.5f;
+    return isfinite(*x) && isfinite(*y);
+}
+static bool background_basis(const WiiMenuPicture* bg,float x[3],float y[3],float* determinant) {
+    const unsigned vertices[3]={0,1,3};
+    for(unsigned n=0;n<3;n++)if(!screen_point(bg,vertices[n],&x[n],&y[n]))return false;
+    *determinant=(x[1]-x[0])*(y[2]-y[0])-(x[2]-x[0])*(y[1]-y[0]);
+    return isfinite(*determinant) && fabsf(*determinant)>.000001f;
+}
+static void background_matte(WiiMenuPicture* out) {
+    if(!grid.background_ready || !out->needs_mask || out->needs_program || out->effect)return;
+    const WiiMenuPicture* bg=&grid.background;float x[3],y[3],det;
+    if(!background_basis(bg,x,y,&det))return;
+    float uv[4][2],mask[4][2],colors[4][4];
+    for(unsigned v=0;v<4;v++) {
+        float px,py;if(!screen_point(out,v,&px,&py))return;
+        float u=((px-x[0])*(y[2]-y[0])-(py-y[0])*(x[2]-x[0]))/det;
+        float t=((x[1]-x[0])*(py-y[0])-(y[1]-y[0])*(px-x[0]))/det;
+        for(unsigned a=0;a<2;a++) {
+            uv[v][a]=interpolate(bg->vertices[0].uv[a],bg->vertices[1].uv[a],bg->vertices[3].uv[a],bg->vertices[2].uv[a],u,t);
+            mask[v][a]=out->mask.uv[a][0]*out->vertices[v].uv[0]+out->mask.uv[a][1]*out->vertices[v].uv[1]+out->mask.uv[a][2];
+        }
+        for(unsigned a=0;a<4;a++)colors[v][a]=out->vertices[v].color[a]*interpolate(bg->vertices[0].color[a],bg->vertices[1].color[a],bg->vertices[3].color[a],bg->vertices[2].color[a],u,t);
+    }
+    /* The stock sheet paints the backdrop around its rounded holes. Reflow
+     * needs that backdrop at the destination pixel, rather than a cropped
+     * copy of the old page gradient. Reuse the original background texture
+     * and rounded mask with independent coordinates through the product API. */
+    out->draw.material.texture=bg->draw.material.texture;
+    out->color=bg->color;out->mask.color=out->color;
+    out->effect=3;out->paired_uv=1;out->needs_mask=0;
+    memset(out->primary_uv,0,sizeof out->primary_uv);memset(out->mask.uv,0,sizeof out->mask.uv);
+    out->primary_uv[0][0]=out->primary_uv[1][1]=out->mask.uv[0][0]=out->mask.uv[1][1]=1;
+    for(unsigned v=0;v<4;v++) {
+        memcpy(out->vertices[v].uv,uv[v],sizeof uv[v]);memcpy(out->extra_uv[v],mask[v],sizeof mask[v]);
+        memcpy(out->vertices[v].color,colors[v],sizeof colors[v]);
+    }
+}
 void wii_menu_grid_picture_tile(CPUState* c,uint32_t pane,unsigned tile,WiiMenuPicture* out) {
     if(!active(c))return;
     const WiiMenuPicture original=*out;
+    if(pane==grid.background_pane) {
+        float x[3],y[3],det;
+        grid.background_ready=!out->skipped && !out->needs_program && !out->needs_mask && !out->needs_layers && !out->effect &&
+            out->draw.material.texture.size && background_basis(out,x,y,&det);
+        if(grid.background_ready)grid.background=*out;
+        return;
+    }
+    uint32_t cursor=cursor_picture(c,pane);
+    if(cursor) {
+        float sx,sy;footer_factors(&sx,&sy);
+        const float x=real(c,cursor+0x90),y=real(c,cursor+0xa0);
+        for(unsigned a=0;a<3;a++){out->draw.model_view[a]*=sx;out->draw.model_view[4+a]*=sy;}
+        out->draw.model_view[3]=x+(out->draw.model_view[3]-x)*sx;
+        out->draw.model_view[7]=y+(out->draw.model_view[7]-y)*sy;
+        return;
+    }
     if(clock_picture(c,pane)) {
         /* The original three clocks move with their page anchors. Keep that
          * motion within the center of the proportional footer, behind its
@@ -522,4 +600,6 @@ void wii_menu_grid_picture_tile(CPUState* c,uint32_t pane,unsigned tile,WiiMenuP
         }
         sample_quad(&original,out,v,u,t);
     }
+    const char* name=(const char*)ptr(c,pane+0xb4,17);
+    if(name && !strcmp(name,"Picture_00"))background_matte(out);
 }

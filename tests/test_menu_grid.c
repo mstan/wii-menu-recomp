@@ -56,6 +56,67 @@ static void init(void) {
         mem_write8(&cpu,pane+0xcf,1);mem_write8(&cpu,comp+0x7c,b==1);
     }
 }
+static void pane_name(unsigned pane,const char* name) {
+    memcpy(cpu.ram+(pane&0x1fffffff)+0xb4,name,strlen(name)+1);
+}
+static void identity_picture(WiiMenuPicture* picture) {
+    memset(picture,0,sizeof *picture);
+    picture->draw.model_view[0]=picture->draw.model_view[5]=picture->draw.model_view[10]=1;
+    picture->draw.projection[0]=1.f/416;picture->draw.projection[5]=1.f/228;
+    picture->draw.projection[10]=picture->draw.projection[15]=1;
+    picture->draw.width=picture->draw.clip_width=640;picture->draw.height=picture->draw.clip_height=456;
+    for(unsigned v=0;v<4;v++)for(unsigned a=0;a<4;a++)picture->vertices[v].color[a]=1;
+}
+static void presentation(void) {
+    init();wii_menu_grid_extent(2082,720,true);frame();
+    const unsigned root=0x80060000,bg_pane=0x80061000,mask_pane=0x80062000,frame_pane=0x80063000;
+    mem_write32(&cpu,LAYOUT+0x14,root);mem_write32(&cpu,mask_pane+0xc,root);mem_write32(&cpu,frame_pane+0xc,root);
+    pane_name(mask_pane,"BaseMask2");pane_name(frame_pane,"Picture_00");grid.background_pane=bg_pane;
+    WiiMenuPicture bg;identity_picture(&bg);
+    const float corners[4][2]={{-416,228},{416,228},{416,-228},{-416,-228}};
+    const float uv[4][2]={{0,0},{1,0},{1,1},{0,1}};
+    for(unsigned v=0;v<4;v++){memcpy(bg.vertices[v].position,corners[v],sizeof corners[v]);memcpy(bg.vertices[v].uv,uv[v],sizeof uv[v]);}
+    bg.draw.material.texture=(GcWiiNativeTexture){.address=0x10001000,.size=16384,.format=6,.width=8,.height=456};
+    for(unsigned a=0;a<4;a++)bg.color.high[a]=255;
+    bg.color.low[3]=255;
+    CHECK(wii_menu_grid_picture_tiles(&cpu,bg_pane)==1);
+    wii_menu_grid_picture_tile(&cpu,bg_pane,0,&bg);CHECK(grid.background_ready);
+    CHECK(wii_menu_grid_picture_tiles(&cpu,mask_pane)==-1);
+    WiiMenuPicture picture;identity_picture(&picture);picture.needs_mask=1;picture.mask.opacity=255;
+    picture.mask.mask=(GcWiiNativeTexture){.address=0x10002000,.size=4096,.width=128,.height=64};
+    picture.mask.uv[0][0]=8;picture.mask.uv[1][1]=1.f/6;
+    picture.draw.model_view[0]=832.f/608;picture.draw.model_view[5]=-1;picture.draw.model_view[7]=49;
+    const float cells[4][2]={{-256,-144},{256,-144},{256,144},{-256,144}};
+    for(unsigned v=0;v<4;v++) {
+        memcpy(picture.vertices[v].position,cells[v],sizeof cells[v]);
+        picture.vertices[v].uv[0]=uv[v][0];picture.vertices[v].uv[1]=uv[v][1]*36;
+    }
+    wii_menu_grid_picture_tile(&cpu,frame_pane,0,&picture);
+    CHECK(picture.effect==3 && picture.paired_uv && !picture.needs_mask);
+    CHECK(picture.draw.material.texture.address==bg.draw.material.texture.address && picture.mask.mask.address==0x10002000);
+    for(unsigned v=0;v<4;v++) {
+        float x,y;CHECK(screen_point(&picture,v,&x,&y));
+        CHECK(fabsf(picture.vertices[v].uv[0]-x/640)<.00001f && fabsf(picture.vertices[v].uv[1]-y/456)<.00001f);
+        CHECK(fabsf(picture.extra_uv[v][0]-uv[v][0]*2)<.00001f && fabsf(picture.extra_uv[v][1]-uv[v][1]*2)<.00001f);
+    }
+    /* Scale pointer artwork in screen axes around its native pointing origin,
+     * including the shadow, while preserving the GUI/click position. */
+    const unsigned trans=0x80065000,rot=0x80066000,shadow=0x80067000,hand=0x80068000;
+    pane_name(trans,"N_Trans");pane_name(rot,"N_Rot");pane_name(shadow,"N_SRot");
+    mem_write32(&cpu,trans+0x14,rot+4);mem_write32(&cpu,rot+4,shadow+4);mem_write32(&cpu,shadow+4,trans+0x14);
+    mem_write32(&cpu,rot+0x14,rot+0x14);mem_write32(&cpu,shadow+0x14,shadow+0x14);
+    mem_write32(&cpu,rot+0xc,trans);mem_write32(&cpu,shadow+0xc,trans);mem_write32(&cpu,hand+0xc,rot);
+    put(&cpu,trans+0x90,137);put(&cpu,trans+0xa0,71);
+    for(unsigned portrait=0;portrait<2;portrait++) {
+        unsigned w=portrait?640:2082,h=portrait?960:720;wii_menu_grid_extent(w,h,true);frame();
+        identity_picture(&picture);picture.draw.model_view[3]=137;picture.draw.model_view[7]=71;
+        CHECK(wii_menu_grid_picture_tiles(&cpu,hand)==1);wii_menu_grid_picture_tile(&cpu,hand,0,&picture);
+        CHECK(picture.draw.model_view[3]==137 && picture.draw.model_view[7]==71);
+        CHECK(fabsf(picture.draw.model_view[0]/picture.draw.model_view[5]*(float)w/h/(16.f/9)-1)<.00001f);
+    }
+    mem_write32(&cpu,SCENE+0xc0,7);CHECK(wii_menu_grid_picture_tiles(&cpu,hand)==0);
+    mem_write32(&cpu,SCENE+0xc0,1);wii_menu_grid_configure(false);CHECK(wii_menu_grid_picture_tiles(&cpu,hand)==0);
+}
 int main(void) {
     cpu.ram_size=1024*1024;cpu.ram=calloc(1,cpu.ram_size);CHECK(cpu.ram);
     init();wii_menu_grid_extent(540,960,true);frame();CHECK(grid.ready && grid.columns==2 && grid.pages==8 && grid.count==6);
@@ -116,5 +177,6 @@ int main(void) {
     CHECK(real(&cpu,optional_root+0x2c)==0 && real(&cpu,optional_root+0x44)==1 && real(&cpu,optional_root+0x48)==1);
     wii_menu_grid_configure(false);CHECK(real(&cpu,pane+0x44)==1.f && real(&cpu,pane+0x48)==1.f);
     cpu.gpr[3]=SCENE;cpu.gpr[4]=0;cpu.gpr[5]=0;CHECK(!wii_menu_grid_entry(&cpu,0x813ad55c));
-    free(cpu.ram);puts("Menu grid mapping, paging, native continuations and stock restoration passed");return 0;
+    presentation();
+    free(cpu.ram);puts("Menu grid mapping, paging, native continuations, backdrop matte, cursor proportions and stock restoration passed");return 0;
 }
