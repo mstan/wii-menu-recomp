@@ -1,3 +1,3 @@
 [submodule "wiillr"]
 	path = wiillr
-	url = git@github.com:mstan/wiillr.git
+	url = https://github.com/mstan/wiillr.git

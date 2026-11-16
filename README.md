@@ -37,8 +37,9 @@ typing uses the USB keyboard peripheral independently of Wii Remote buttons.
 ## Local builds
 
 ```sh
-git clone --recurse-submodules git@github.com:mstan/wii-menu-recomp.git
+git clone https://github.com/mstan/wii-menu-recomp.git
 cd wii-menu-recomp
+git submodule update --init wiillr
 ```
 
 Use the matching native toolchain and a qualified private input bundle, described
