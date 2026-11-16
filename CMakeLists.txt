@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.24)
+project(WiiMenuRecomp LANGUAGES C CXX)
+include(CTest)
+set(WIILLR_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/wiillr" CACHE PATH "Pinned Wii engine")
+set(WIILLR_MENU_GRID_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/menu_grid.c" CACHE FILEPATH "Menu adaptive-layout provider")
+add_subdirectory("${WIILLR_ROOT}" engine)
+add_executable(test_wii_menu_adaptive_grid tests/test_menu_grid.c)
+target_include_directories(test_wii_menu_adaptive_grid PRIVATE "${WIILLR_ROOT}/include"
+  "${WIILLR_CORE_SOURCE_DIR}/include" "${WIILLR_CORE_SOURCE_DIR}/dsp_lle/include")
+if(NOT WIN32)
+  target_link_libraries(test_wii_menu_adaptive_grid PRIVATE m)
+endif()
+add_test(NAME wii_menu_consumer_grid COMMAND test_wii_menu_adaptive_grid)
