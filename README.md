@@ -24,10 +24,10 @@ python tools/build.py --version 0.1.0-adaptive --inputs-dir /path/to/qualified-i
 ```
 
 The command selects this consumer's provider and the Wii Menu product. The pinned
-engine's [build guide](https://github.com/mstan/wiillr/blob/59c0f8198591fc8db59fffbd6006592313c68cf9/docs/building.md) describes Windows, Linux and macOS
+engine's [build guide](https://github.com/mstan/wiillr/blob/b187ae905556df9412f0dfcd2e159d463473e9a5/docs/building.md) describes Windows, Linux and macOS
 dependencies and the private qualified input bundle. Builds run locally.
 
 The provider is original MIT-licensed code. Reverse-engineering references and
 version identities are documented in the engine's
-[Menu annotation guide](https://github.com/mstan/wiillr/blob/59c0f8198591fc8db59fffbd6006592313c68cf9/docs/wii-menu-references.md). Native saves and
+[Menu annotation guide](https://github.com/mstan/wiillr/blob/b187ae905556df9412f0dfcd2e159d463473e9a5/docs/wii-menu-references.md). Native saves and
 explicit player preferences must be preserved when updating.
