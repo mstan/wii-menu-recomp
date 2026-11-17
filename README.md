@@ -27,11 +27,11 @@ blend with the original backdrop. Stock presentation remains available; channel
 rearrangement is disabled while the adaptive mod is active. Other Menu screens
 retain their original layouts. Android support is not implied.
 
-![Fit to screen in an ultrawide window](docs/images/wii-menu-fit-wide.png)
+![Adaptive Fit at 21:9 with the expanded-library page counter](docs/images/wii-menu-expanded-wide.png)
 
 <img src="docs/images/wii-menu-fit-portrait.png" width="320" alt="Fit to screen with two columns and three rows in a portrait window">
 
-[Setup, controls and peripherals](https://github.com/mstan/wiillr/blob/0eb50a7fde1b3f20e92b07b3d02cdc0530c2f5f4/docs/wii-menu.md)
+[Setup, controls and peripherals](https://github.com/mstan/wiillr/blob/f8f846f50f0ccb3890fb313406776b7b7c5b0e14/docs/wii-menu.md)
 include four Wii Remote assignments, two USB ports and an SD Card slot. Keyboard
 typing uses the USB keyboard peripheral independently of Wii Remote buttons.
 
@@ -42,14 +42,16 @@ by default. Choose 2x through 128x the stock 48 positions and
 restart Wii Menu. Installed overflow channels appear after the stock positions;
 the three rows, adaptive columns and original page transitions remain.
 The main grid shows a Wii-style **X / Y** page counter that recalculates when
-resizing changes the column count.
+resizing changes the column count. At maximum capacity, six columns gives 342
+pages, five gives 410, and two gives 1,024. The counter stays below the date;
+stock capacity and other Menu screens keep their original presentation.
 [Library setup, ordering, shortcuts and limits](docs/channel-library.md) explains
 how this stays separate from native saves and stock channel order. Execution
 support for each launched title remains a separate requirement.
 
 ## Run the Windows preview
 
-Download the Windows archive from [Releases](https://github.com/mstan/wii-menu-recomp/releases),
+Download the [0.1.4 Windows preview](https://github.com/mstan/wii-menu-recomp/releases/tag/v0.1.4),
 extract the complete archive and open **Wii Menu**. Import your supported NAND
 backup or extracted system folder in the launcher. The source-build arguments
 below are not needed to run the downloaded application.
@@ -65,7 +67,7 @@ git submodule update --init wiillr
 These are maintainer source-build commands. The generated-code input bundle is
 private; a public clone and a NAND backup alone do not currently supply it.
 Use the matching native toolchain and qualified build inputs described in the
-engine's [build guide](https://github.com/mstan/wiillr/blob/0eb50a7fde1b3f20e92b07b3d02cdc0530c2f5f4/docs/building.md).
+engine's [build guide](https://github.com/mstan/wiillr/blob/f8f846f50f0ccb3890fb313406776b7b7c5b0e14/docs/building.md).
 
 Windows PowerShell:
 
@@ -94,7 +96,7 @@ It does not point to a NAND or game folder.
 Build working files default to `build/HOST-ARCH` and archives to `dist`.
 Use `--build-dir` and `--output-dir` to override them. Add `--check` to validate
 the input bundle and basic prerequisites without compiling or launching a game. The engine's
-[argument reference](https://github.com/mstan/wiillr/blob/0eb50a7fde1b3f20e92b07b3d02cdc0530c2f5f4/docs/building.md#build-arguments)
+[argument reference](https://github.com/mstan/wiillr/blob/f8f846f50f0ccb3890fb313406776b7b7c5b0e14/docs/building.md#build-arguments)
 defines valid products, inputs, versions and common errors.
 
 `product.json` owns the product identity and default version. `tools/build.py`
@@ -108,5 +110,5 @@ remain pending.
 
 The provider and consumer build scripts use [GPLv3 or later](LICENSE).
 [Licensing details](LICENSING.md) preserve upstream terms and earlier grants. The engine's
-[Menu annotation guide](https://github.com/mstan/wiillr/blob/0eb50a7fde1b3f20e92b07b3d02cdc0530c2f5f4/docs/wii-menu-references.md)
+[Menu annotation guide](https://github.com/mstan/wiillr/blob/f8f846f50f0ccb3890fb313406776b7b7c5b0e14/docs/wii-menu-references.md)
 records the original-version identities and reverse-engineering references.
