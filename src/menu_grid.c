@@ -475,7 +475,9 @@ bool wii_menu_grid_page_label(CPUState* c,uint32_t pane,WiiMenuTextLabel* out) {
         for(unsigned i=0;text[i];i++)out->text[i]=(uint8_t)text[i];
         float sx=1,sy=1;if(enabled && fit)footer_factors(&sx,&sy);
         (void)sx;
-        out->x=0;out->y=-228.f+(footer->gy+228.f+80.f)*sy;out->scale=.6f;
+        /* The native footer board covers the band above the clock. Keep the
+         * caption in its clear center below the date, scaling with that date. */
+        out->x=0;out->y=-228.f+(footer->gy+228.f-30.f)*sy;out->scale=.6f;
         return true;
     }
     return false;
