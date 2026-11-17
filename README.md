@@ -17,7 +17,8 @@ external inputs. Preserve your managed NAND and per-user settings when updating.
 
 Enable **Adaptive channel grid (experimental)** in **Mods** and select **Fit to
 screen**, then resize the window. The original three rows remain, with two
-columns in portrait and up to eight in wider windows. Neighboring columns peek
+columns in portrait and up to six in wider windows. The Menu viewport is capped
+at 21:9; wider windows retain their size with side margins. Neighboring columns peek
 through at the sides, and paging uses the original sliding animation. Channels
 keep their original identities and NAND order.
 
