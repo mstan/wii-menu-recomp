@@ -30,7 +30,7 @@ retain their original layouts. Android support is not implied.
 
 <img src="docs/images/wii-menu-fit-portrait.png" width="320" alt="Fit to screen with two columns and three rows in a portrait window">
 
-[Setup, controls and peripherals](https://github.com/mstan/wiillr/blob/3268b5b0631b6a124202db68541fabfae0c3f899/docs/wii-menu.md)
+[Setup, controls and peripherals](https://github.com/mstan/wiillr/blob/c5ddd3ba9b25450acc1cf0ede8895fa21c8c3aab/docs/wii-menu.md)
 include four Wii Remote assignments, two USB ports and an SD Card slot. Keyboard
 typing uses the USB keyboard peripheral independently of Wii Remote buttons.
 
@@ -43,7 +43,7 @@ git submodule update --init wiillr
 ```
 
 Use the matching native toolchain and a qualified private input bundle, described
-in the engine's [build guide](https://github.com/mstan/wiillr/blob/3268b5b0631b6a124202db68541fabfae0c3f899/docs/building.md).
+in the engine's [build guide](https://github.com/mstan/wiillr/blob/c5ddd3ba9b25450acc1cf0ede8895fa21c8c3aab/docs/building.md).
 
 Windows PowerShell:
 
@@ -72,5 +72,5 @@ with native builds and runtime qualification on those hosts still pending.
 
 The provider and consumer build scripts use [GPLv3 or later](LICENSE).
 [Licensing details](LICENSING.md) preserve upstream terms and earlier grants. The engine's
-[Menu annotation guide](https://github.com/mstan/wiillr/blob/3268b5b0631b6a124202db68541fabfae0c3f899/docs/wii-menu-references.md)
+[Menu annotation guide](https://github.com/mstan/wiillr/blob/c5ddd3ba9b25450acc1cf0ede8895fa21c8c3aab/docs/wii-menu-references.md)
 records the original-version identities and reverse-engineering references.
