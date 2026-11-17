@@ -272,7 +272,7 @@ static void expanded_library(void) {
 
 static void page_indicator(void) {
     init();wii_menu_grid_extent(1280,720,true);frame();
-    const uint32_t date=0x8007b000;put(&cpu,date+0xa0,-205);footer_add(&cpu,date,6);
+    const uint32_t date=0x8007b000;put(&cpu,date+0xa0,-177);footer_add(&cpu,date,6);
     WiiMenuTextLabel label;CHECK(!wii_menu_grid_page_label(&cpu,date,&label));
     library.capacity=6144;grid.anchor=6143;grid.columns=0;geometry(&cpu);
     const unsigned sizes[][2]={{1280,720},{540,960},{1960,720},{2082,720}};
@@ -285,6 +285,7 @@ static void page_indicator(void) {
         text[length]=0;
         snprintf(expected,sizeof expected,"Page %u / %u",totals[n],totals[n]);
         CHECK(!strcmp(text,expected) && label.x==0 && label.scale==.6f && isfinite(label.y));
+        CHECK(label.y>-224 && label.y<-190); /* clear footer center, inside the view */
         CHECK(grid.first<=6143 && grid.first+grid.count>6143);
     }
     /* The page count follows committed layout during the original slide. */
