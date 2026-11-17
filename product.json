@@ -1,7 +1,7 @@
 {
   "name": "Wii Menu Recomp",
   "engine_product": "wii-menu",
-  "version": "0.1.1-adaptive",
+  "version": "0.1.2",
   "provider": "src/menu_grid.c",
   "release_channel": "preview"
 }

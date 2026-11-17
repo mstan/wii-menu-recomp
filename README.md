@@ -30,7 +30,7 @@ retain their original layouts. Android support is not implied.
 
 <img src="docs/images/wii-menu-fit-portrait.png" width="320" alt="Fit to screen with two columns and three rows in a portrait window">
 
-[Setup, controls and peripherals](https://github.com/mstan/wiillr/blob/11c3d06111a878a172ea98430173d4bdc067e277/docs/wii-menu.md)
+[Setup, controls and peripherals](https://github.com/mstan/wiillr/blob/ca1251bbc8c8630b89866fa83a477c1a7229287a/docs/wii-menu.md)
 include four Wii Remote assignments, two USB ports and an SD Card slot. Keyboard
 typing uses the USB keyboard peripheral independently of Wii Remote buttons.
 
@@ -52,36 +52,36 @@ git submodule update --init wiillr
 These are maintainer source-build commands. The generated-code input bundle is
 private; a public clone and a NAND backup alone do not currently supply it.
 Use the matching native toolchain and qualified build inputs described in the
-engine's [build guide](https://github.com/mstan/wiillr/blob/11c3d06111a878a172ea98430173d4bdc067e277/docs/building.md).
+engine's [build guide](https://github.com/mstan/wiillr/blob/ca1251bbc8c8630b89866fa83a477c1a7229287a/docs/building.md).
 
 Windows PowerShell:
 
 ```powershell
-./tools/build-windows.ps1 --inputs-dir "C:/wii-build-inputs" --build-dir build/windows-x86_64 --output-dir dist --jobs 2
+./tools/build-windows.ps1 --inputs "C:/wii-build-inputs" --jobs 2
 ```
 
 Linux:
 
 ```sh
-bash tools/build-linux.sh --inputs-dir /path/to/wii-build-inputs --build-dir build/linux-x86_64 --output-dir dist --jobs 2
+bash tools/build-linux.sh --inputs /path/to/wii-build-inputs --jobs 2
 ```
 
 macOS:
 
 ```sh
-bash tools/build-macos.sh --inputs-dir /path/to/wii-build-inputs --build-dir build/macos --output-dir dist --jobs 2
+bash tools/build-macos.sh --inputs /path/to/wii-build-inputs --jobs 2
 ```
 
 The consumer selects the product automatically. Its version defaults to the
 value in `product.json`; `--version 0.1.1-local.1` is an optional package-label
-override, unrelated to Wii Menu 4.3U. `--inputs-dir` points to the verified
-developer bundle containing `inputs.json`, sources and the qualified catalog.
+override, unrelated to Wii Menu 4.3U. `--inputs` (or `--inputs-dir`) accepts a verified developer bundle directory
+or checksum-pinned ZIP containing `inputs.json`, sources and the qualified catalog.
 It does not point to a NAND or game folder.
 
-`--build-dir` holds compiler working files; `--output-dir` receives finished
-archives. **Both paths are currently required.** The `build/...` and `dist`
-paths above are explicit examples, not automatic defaults. The engine's
-[argument reference](https://github.com/mstan/wiillr/blob/11c3d06111a878a172ea98430173d4bdc067e277/docs/building.md#build-arguments)
+Build working files default to `build/HOST-ARCH` and archives to `dist`.
+Use `--build-dir` and `--output-dir` to override them. Add `--check` to validate
+the input bundle and basic prerequisites without compiling or launching a game. The engine's
+[argument reference](https://github.com/mstan/wiillr/blob/ca1251bbc8c8630b89866fa83a477c1a7229287a/docs/building.md#build-arguments)
 defines valid products, inputs, versions and common errors.
 
 `product.json` owns the product identity and default version. `tools/build.py`
@@ -96,5 +96,5 @@ input bundle has not been qualified.
 
 The provider and consumer build scripts use [GPLv3 or later](LICENSE).
 [Licensing details](LICENSING.md) preserve upstream terms and earlier grants. The engine's
-[Menu annotation guide](https://github.com/mstan/wiillr/blob/11c3d06111a878a172ea98430173d4bdc067e277/docs/wii-menu-references.md)
+[Menu annotation guide](https://github.com/mstan/wiillr/blob/ca1251bbc8c8630b89866fa83a477c1a7229287a/docs/wii-menu-references.md)
 records the original-version identities and reverse-engineering references.
