@@ -9,6 +9,11 @@ the application's per-user preferences folder.
 
 The original three rows remain. With Adaptive channel grid and Fit to screen,
 the window determines the column count independently of library capacity.
+Adaptive Fit to screen currently caps the Menu viewport at 21:9 (six columns).
+Wider windows and fullscreen displays keep their size and show side margins;
+the tiles, pointer, clock and footer use the same capped viewport. This avoids
+unsupported layouts at extreme widths. Portrait and ordinary widescreen layouts
+continue to adapt within that limit.
 Without adaptive layout, expanded pages use four columns. The original sliding
 animation and neighboring column peeks remain. Rearranging channels inside the
 Menu is disabled while either grid experiment is active.

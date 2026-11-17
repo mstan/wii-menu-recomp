@@ -168,7 +168,8 @@ static void presentation(void) {
         identity_picture(&picture);picture.draw.model_view[3]=137;picture.draw.model_view[7]=71;
         CHECK(wii_menu_grid_picture_tiles(&cpu,hand)==1);wii_menu_grid_picture_tile(&cpu,hand,0,&picture);
         CHECK(picture.draw.model_view[3]==137 && picture.draw.model_view[7]==71);
-        CHECK(fabsf(picture.draw.model_view[0]/picture.draw.model_view[5]*(float)w/h/(16.f/9)-1)<.00001f);
+        unsigned vw,vh;CHECK(wii_menu_grid_aspect(&vw,&vh));
+        CHECK(fabsf(picture.draw.model_view[0]/picture.draw.model_view[5]*(float)vw/vh/(16.f/9)-1)<.00001f);
     }
     mem_write32(&cpu,SCENE+0xc0,7);CHECK(wii_menu_grid_picture_tiles(&cpu,hand)==0);
     mem_write32(&cpu,SCENE+0xc0,1);wii_menu_grid_configure(false);CHECK(wii_menu_grid_picture_tiles(&cpu,hand)==0);
@@ -275,10 +276,13 @@ static void page_indicator(void) {
     const uint32_t date=0x8007b000;put(&cpu,date+0xa0,-177);footer_add(&cpu,date,6);
     WiiMenuTextLabel label;CHECK(!wii_menu_grid_page_label(&cpu,date,&label));
     library.capacity=6144;grid.anchor=6143;grid.columns=0;geometry(&cpu);
-    const unsigned sizes[][2]={{1280,720},{540,960},{1960,720},{2082,720}};
-    const unsigned totals[]={410,1024,293,256};
-    for(unsigned n=0;n<4;n++) {
+    const unsigned sizes[][2]={{1280,720},{540,960},{1680,720},{1960,720},{2757,720},{8192,240}};
+    const unsigned totals[]={410,1024,342,342,342,342};
+    for(unsigned n=0;n<sizeof totals/sizeof *totals;n++) {
         wii_menu_grid_extent(sizes[n][0],sizes[n][1],true);geometry(&cpu);
+        unsigned vw,vh;CHECK(wii_menu_grid_aspect(&vw,&vh));
+        if(n>=2)CHECK(vw*3==vh*7 && grid.columns==6);
+        else CHECK(vw==sizes[n][0] && vh==sizes[n][1]);
         CHECK(wii_menu_grid_page_label(&cpu,date,&label));
         char text[32],expected[32];unsigned length=0;
         for(;label.text[length];length++)text[length]=(char)label.text[length];
@@ -289,7 +293,7 @@ static void page_indicator(void) {
         CHECK(grid.first<=6143 && grid.first+grid.count>6143);
     }
     /* The page count follows committed layout during the original slide. */
-    grid.scroll.active=true;wii_menu_grid_extent(540,960,true);geometry(&cpu);CHECK(grid.pages==256);
+    grid.scroll.active=true;wii_menu_grid_extent(540,960,true);geometry(&cpu);CHECK(grid.pages==342);
     grid.scroll.active=false;geometry(&cpu);CHECK(grid.pages==1024);
     CHECK(!wii_menu_grid_page_label(&cpu,date+4,&label));
     mem_write32(&cpu,SCENE+0xc0,7);CHECK(!wii_menu_grid_page_label(&cpu,date,&label));
@@ -322,7 +326,7 @@ int main(void) {
     cpu.gpr[3]=SCENE;cpu.gpr[4]=0;cpu.gpr[5]=ENCODED|47;CHECK(!wii_menu_grid_entry(&cpu,0x813ace78));
     CHECK(cpu.gpr[4]==3 && cpu.gpr[5]==11);
     wii_menu_grid_extent(1680,720,true);frame();CHECK(grid.columns==6 && grid.pages==3 && grid.first==36);
-    wii_menu_grid_extent(1960,720,true);frame();CHECK(grid.columns==7 && grid.first==42);
+    wii_menu_grid_extent(1960,720,true);frame();CHECK(grid.columns==6 && grid.first==36);
     /* Physical aspect of a footer button equals its stock 16:9 aspect. */
     unsigned footer=0x80060000;mem_write32(&cpu,footer+0xc,PARENT);put(&cpu,footer+0x2c,294);
     put(&cpu,footer+0x44,1);put(&cpu,footer+0x48,1);footer_add(&cpu,footer,2);

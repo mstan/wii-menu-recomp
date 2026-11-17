@@ -22,6 +22,16 @@ static bool enabled,fit=true;
 static bool return_anchor_valid;
 static unsigned return_anchor;
 static unsigned width=1280,height=720;
+/* Keep the window resizable, but stop expanding the Menu beyond 21:9.
+ * Its stock footer and resident tile pool have not been qualified above this
+ * ratio. The display backend centers this viewport and maps the pointer to it. */
+static void fit_extent(unsigned* w,unsigned* h) {
+    if((uint64_t)width*3>(uint64_t)height*7){*w=7;*h=3;}
+    else {*w=width;*h=height;}
+}
+static float fit_aspect(void) {
+    unsigned w,h;fit_extent(&w,&h);return (float)w/h;
+}
 static struct {
     CPUState* cpu;uint32_t scene,layout;Slot slots[3][12];Root roots[192];unsigned root_count;
     unsigned columns,page,pages,first,count,carrier,anchor;float world_width,sx,sy,gap_x,step_x,step_y;
@@ -111,7 +121,7 @@ bool wii_menu_grid_aspect(unsigned* w,unsigned* h) {
     if(!enabled || !fit || !grid.ready || !grid.cpu)return false;
     unsigned phase=word(grid.cpu,grid.scene+0xc0);
     if(phase>3 && (phase<10 || phase>13))return false;
-    *w=width;*h=height;return true;
+    fit_extent(w,h);return true;
 }
 static bool bind_scene(CPUState* c,uint32_t scene) {
     if(word(c,scene)!=0x8164e0b8 || word(c,scene+0xcc)!=4)return false;
@@ -140,7 +150,7 @@ static bool bind_scene(CPUState* c,uint32_t scene) {
     return grid.ready;
 }
 static void geometry(CPUState* c) {
-    unsigned columns=enabled && fit?(unsigned)floorf((float)width/height*2.8f+0.1f):4;
+    unsigned columns=enabled && fit?(unsigned)floorf(fit_aspect()*2.8f+0.1f):4;
     if(columns<2)columns=2;
     if(columns>8)columns=8;
     if(grid.scroll.active)columns=grid.columns;
@@ -156,7 +166,7 @@ static void geometry(CPUState* c) {
         if(carrier!=word(c,grid.scene+0xc8))grid.refresh=true;
         grid.carrier=carrier;
     }
-    const float aspect=enabled && fit?(float)width/height:(real(c,grid.scene+0xec)>1.1f?16.f/9:4.f/3);
+    const float aspect=enabled && fit?fit_aspect():(real(c,grid.scene+0xec)>1.1f?16.f/9:4.f/3);
     grid.world_width=real(c,grid.scene+0xec)>1.1f?832.f:608.f;
     const float gap=11.f,card_aspect=1.725f;
     const float card_h=fminf(96.f,((aspect*456.f*.88f-gap*(columns-1))/columns)/card_aspect);
@@ -230,7 +240,7 @@ static void bind_footer(CPUState* c,uint32_t button) {
     footer_add(c,find_pane(c,clock_root,"N_WiiMenu",0),3);
 }
 static void footer_factors(float* sx,float* sy) {
-    float aspect=(float)width/height;*sy=fminf(1.f,aspect/1.4f);*sx=*sy*(16.f/9.f)/aspect;
+    float aspect=fit_aspect();*sy=fminf(1.f,aspect/1.4f);*sx=*sy*(16.f/9.f)/aspect;
 }
 static bool footer_transform(CPUState* c,uint32_t pane) {
     for(unsigned n=0;n<grid.footer_count;n++) {
