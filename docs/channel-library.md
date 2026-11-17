@@ -57,6 +57,11 @@ still needs a supported native build and its original installed data. A title
 that is visible in the library is not thereby qualified for execution. Public
 firmware/content distribution is not part of this feature.
 
+The native title runtime has a separate known limitation: HOME during Mega Man
+9's early startup can stop rendering on an unsupported modal fade. The
+title-screen HOME return is qualified. Expanded positions do not remove that
+startup limitation.
+
 Metadata and overflow ordering use host memory. The guest retains 48 resident
 channel records and at most the stock tile-object pool. New banners use the
 original asynchronous loader. Offscreen records are recycled only after their
