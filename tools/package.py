@@ -16,9 +16,9 @@ def main():
     parser.add_argument('--output-dir',type=Path,required=True)
     parser.add_argument('--platform',choices=['windows','linux','macos'])
     args=parser.parse_args()
-    product=json.loads((ROOT/'product.json').read_text())
+    product=json.loads((ROOT/'product.json').read_text(encoding='utf-8'))
     build=args.build_dir.resolve()
-    metadata=json.loads((build/'build-products.json').read_text())
+    metadata=json.loads((build/'build-products.json').read_text(encoding='utf-8'))
     def output_path(value):
         path=Path(value)
         return path if path.is_absolute() else build/path
@@ -26,9 +26,13 @@ def main():
         raise ValueError('Build metadata belongs to a different consumer')
     # The engine package stores documentation images beside its README.
     readme=build/'WiiMenuRecomp-README.md'
-    readme.write_text((ROOT/'README.md').read_text().replace('docs/images/','images/').replace('](LICENSE)','](LICENSES/WiiMenuRecomp-GPL3.txt)'))
+    readme.write_text((ROOT/'README.md').read_text(encoding='utf-8')
+                      .replace('](docs/','](').replace('src="docs/','src="')
+                      .replace('](LICENSE)','](LICENSES/WiiMenuRecomp-GPL3.txt)')
+                      .replace('](LICENSING.md)','](LICENSES/WiiMenuRecomp-LICENSING.md)'),
+                      encoding='utf-8')
     metadata['readme']=str(readme)
-    (build/'build-products.json').write_text(json.dumps(metadata,indent=2)+'\n')
+    (build/'build-products.json').write_text(json.dumps(metadata,indent=2)+'\n',encoding='utf-8')
     shutil.copy2(ROOT/'LICENSE',output_path(metadata['licenses_dir'])/'WiiMenuRecomp-GPL3.txt')
     shutil.copy2(ROOT/'LICENSING.md',output_path(metadata['licenses_dir'])/'WiiMenuRecomp-LICENSING.md')
     command=[sys.executable,str(ROOT/'wiillr/tools/package_release.py'),

@@ -30,9 +30,19 @@ retain their original layouts. Android support is not implied.
 
 <img src="docs/images/wii-menu-fit-portrait.png" width="320" alt="Fit to screen with two columns and three rows in a portrait window">
 
-[Setup, controls and peripherals](https://github.com/mstan/wiillr/blob/ca1251bbc8c8630b89866fa83a477c1a7229287a/docs/wii-menu.md)
+[Setup, controls and peripherals](https://github.com/mstan/wiillr/blob/0566bff48c279d713af84fde341661ce04bcdc0b/docs/wii-menu.md)
 include four Wii Remote assignments, two USB ports and an SD Card slot. Keyboard
 typing uses the USB keyboard peripheral independently of Wii Remote buttons.
+
+## Expanded channel library
+
+**Expanded channel library (experimental)** is available in **Mods**, disabled
+by default. Choose 2x through 128x the stock 48 positions and
+restart Wii Menu. Installed overflow channels appear after the stock positions;
+the three rows, adaptive columns and original page transitions remain.
+[Library setup, ordering, shortcuts and limits](docs/channel-library.md) explains
+how this stays separate from native saves and stock channel order. Execution
+support for each launched title remains a separate requirement.
 
 ## Run the Windows preview
 
@@ -52,7 +62,7 @@ git submodule update --init wiillr
 These are maintainer source-build commands. The generated-code input bundle is
 private; a public clone and a NAND backup alone do not currently supply it.
 Use the matching native toolchain and qualified build inputs described in the
-engine's [build guide](https://github.com/mstan/wiillr/blob/ca1251bbc8c8630b89866fa83a477c1a7229287a/docs/building.md).
+engine's [build guide](https://github.com/mstan/wiillr/blob/0566bff48c279d713af84fde341661ce04bcdc0b/docs/building.md).
 
 Windows PowerShell:
 
@@ -81,20 +91,19 @@ It does not point to a NAND or game folder.
 Build working files default to `build/HOST-ARCH` and archives to `dist`.
 Use `--build-dir` and `--output-dir` to override them. Add `--check` to validate
 the input bundle and basic prerequisites without compiling or launching a game. The engine's
-[argument reference](https://github.com/mstan/wiillr/blob/ca1251bbc8c8630b89866fa83a477c1a7229287a/docs/building.md#build-arguments)
+[argument reference](https://github.com/mstan/wiillr/blob/0566bff48c279d713af84fde341661ce04bcdc0b/docs/building.md#build-arguments)
 defines valid products, inputs, versions and common errors.
 
 `product.json` owns the product identity and default version. `tools/build.py`
 selects this consumer's provider and delegates compilation to the pinned engine;
 `tools/package.py` packages explicit outputs with the consumer's documentation
 and required source/license notices. Builds run locally. The adaptive preview
-archive is qualified on Windows x86_64; Linux and macOS scripts are provided,
-with native builds and runtime qualification on those hosts still pending.
-Windows qualification applies to the published archive. A fresh end-to-end
-adaptive-preview rebuild through these wrappers with a matching release-specific
-input bundle has not been qualified.
+archive targets Windows x86_64. These wrappers have passed a fresh Windows
+source build with the matching input bundle. Linux and macOS scripts are
+provided; native consumer builds and runtime qualification on those hosts
+remain pending.
 
 The provider and consumer build scripts use [GPLv3 or later](LICENSE).
 [Licensing details](LICENSING.md) preserve upstream terms and earlier grants. The engine's
-[Menu annotation guide](https://github.com/mstan/wiillr/blob/ca1251bbc8c8630b89866fa83a477c1a7229287a/docs/wii-menu-references.md)
+[Menu annotation guide](https://github.com/mstan/wiillr/blob/0566bff48c279d713af84fde341661ce04bcdc0b/docs/wii-menu-references.md)
 records the original-version identities and reverse-engineering references.

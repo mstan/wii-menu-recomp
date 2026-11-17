@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Original 4.3U scene objects, NW4R panes and GUI components remain the owners
- * of channels, input and title transitions. This adapter changes presentation;
- * it never writes the channel manager's persistent page/index arrays.
+ * of channels, input and title transitions. Expanded library indices map to a
+ * bounded resident pool. The persistent SaveData arrays remain untouched.
  * Offsets and seams: annotations/wii-menu-43u.json, original SHA1 26116613... . */
 #include <wiillr/menu_grid.h>
 #include <wiillr/menu_picture.h>
@@ -41,6 +41,8 @@ static uint32_t word(CPUState* c,uint32_t a) {
 }
 static float real(CPUState* c,uint32_t a) {uint32_t w=word(c,a);float f;memcpy(&f,&w,4);return f;}
 static void put(CPUState* c,uint32_t a,float f) {uint32_t w;memcpy(&w,&f,4);mem_write32(c,a,w);}
+static bool in_extent(unsigned,float);
+#include "menu_library.inc"
 static void visibility(CPUState* c,uint32_t pane,bool show) {
     const uint8_t* p=ptr(c,pane+0xcf,1);if(p)mem_write8(c,pane+0xcf,(*p&~1u)|(show?1:0));
 }
@@ -52,7 +54,7 @@ static int name_slot(const char* n,int* bank) {
 }
 static void tile_position(unsigned flat,float* x,float* y);
 static bool in_extent(unsigned flat,float margin) {
-    if(flat>=48 || !grid.columns)return false;
+    if(flat>=channel_capacity() || !grid.columns)return false;
     float x,y;tile_position(flat,&x,&y);(void)y;
     return x+88.f*grid.sx>-grid.world_width*.5f-margin && x-88.f*grid.sx<grid.world_width*.5f+margin;
 }
@@ -61,7 +63,7 @@ static int flat_for(int bank,int index) {
     return grid.slots[bank][index].flat;
 }
 static bool active(CPUState* c) {
-    return enabled && fit && grid.ready && grid.cpu==c && word(c,grid.scene)==0x8164e0b8 &&
+    return grid_requested() && grid.ready && grid.cpu==c && word(c,grid.scene)==0x8164e0b8 &&
         word(c,grid.scene+0x68)==grid.layout;
 }
 static bool owned(CPUState* c) {
@@ -95,13 +97,13 @@ bool wii_menu_grid_supported(void) {
 }
 void wii_menu_grid_configure(bool value) {
     value=value && wii_menu_grid_supported();
-    if(enabled && !value && grid.cpu)restore(grid.cpu);
+    if(enabled && !value && library.capacity<=48 && grid.cpu)restore(grid.cpu);
     enabled=value;
 }
 bool wii_menu_grid_enabled(void) {return enabled;}
 void wii_menu_grid_extent(unsigned w,unsigned h,bool use_fit) {
     if(w>=160 && h>=160 && w<=16384 && h<=16384){width=w;height=h;}
-    if(fit && !use_fit && grid.cpu)restore(grid.cpu);
+    if(fit && !use_fit && library.capacity<=48 && grid.cpu)restore(grid.cpu);
     fit=use_fit;
 }
 bool wii_menu_grid_aspect(unsigned* w,unsigned* h) {
@@ -114,7 +116,10 @@ static bool bind_scene(CPUState* c,uint32_t scene) {
     if(word(c,scene)!=0x8164e0b8 || word(c,scene+0xcc)!=4)return false;
     const uint32_t layout=word(c,scene+0x68),gui=word(c,scene+0x7c);
     if(!layout || !gui)return false;
-    const unsigned anchor=return_anchor_valid?return_anchor:word(c,scene+0xc8)*12;
+    if(library.load.active && !library.load.override)library.load.active=false;
+    library_catalog(c);
+    const unsigned anchor=library.ready?library.anchor:
+        return_anchor_valid && return_anchor<channel_capacity()?return_anchor:word(c,scene+0xc8)*12;
     wii_menu_grid_reset();grid.cpu=c;grid.scene=scene;grid.layout=layout;grid.anchor=anchor;
     uint32_t node=word(c,gui+0x18);unsigned found=0;
     for(unsigned visited=0;node && visited<128;visited++) {
@@ -134,7 +139,7 @@ static bool bind_scene(CPUState* c,uint32_t scene) {
     return grid.ready;
 }
 static void geometry(CPUState* c) {
-    unsigned columns=(unsigned)floorf((float)width/height*2.8f+0.1f);
+    unsigned columns=enabled && fit?(unsigned)floorf((float)width/height*2.8f+0.1f):4;
     if(columns<2)columns=2;
     if(columns>8)columns=8;
     if(grid.scroll.active)columns=grid.columns;
@@ -142,14 +147,15 @@ static void geometry(CPUState* c) {
         /* Keep the first displayed channel nearby when the capacity changes. */
         grid.page=grid.anchor/(columns*3);grid.columns=columns;grid.arrows=true;
     }
-    grid.pages=(48+columns*3-1)/(columns*3);if(grid.page>=grid.pages)grid.page=grid.pages-1;
-    grid.first=grid.page*columns*3;grid.count=48-grid.first;if(grid.count>columns*3)grid.count=columns*3;
-    const unsigned carrier=(grid.first+(grid.count-1)/2)/12;
+    grid.pages=(channel_capacity()+columns*3-1)/(columns*3);if(grid.page>=grid.pages)grid.page=grid.pages-1;
+    grid.first=grid.page*columns*3;grid.count=channel_capacity()-grid.first;if(grid.count>columns*3)grid.count=columns*3;
+    int middle=physical_slot(grid.first+(grid.count-1)/2);
+    const unsigned carrier=middle<0?grid.carrier:(unsigned)middle/12;
     if(!grid.scroll.active) {
         if(carrier!=word(c,grid.scene+0xc8))grid.refresh=true;
         grid.carrier=carrier;
     }
-    const float aspect=(float)width/height;
+    const float aspect=enabled && fit?(float)width/height:(real(c,grid.scene+0xec)>1.1f?16.f/9:4.f/3);
     grid.world_width=real(c,grid.scene+0xec)>1.1f?832.f:608.f;
     const float gap=11.f,card_aspect=1.725f;
     const float card_h=fminf(96.f,((aspect*456.f*.88f-gap*(columns-1))/columns)/card_aspect);
@@ -166,7 +172,7 @@ static void tile_position(unsigned flat,float* x,float* y) {
 }
 static void map_slots(CPUState* c) {
     grid.shown_count=0;
-    for(unsigned flat=0;flat<48;flat++)if(in_extent(flat,grid.step_x*.75f) && grid.shown_count<36)
+    for(unsigned flat=grid.first>grid.columns*3?grid.first-grid.columns*3:0;flat<channel_capacity() && flat<grid.first+grid.columns*9;flat++)if(in_extent(flat,grid.step_x*.75f) && grid.shown_count<36)
         grid.shown[grid.shown_count++]=flat;
     for(unsigned b=0;b<3;b++)for(unsigned i=0;i<12;i++) {
         Slot* s=&grid.slots[b][i];bool keep=false;
@@ -184,10 +190,11 @@ static void map_slots(CPUState* c) {
     for(unsigned b=0;b<3;b++)for(unsigned i=0;i<12;i++) {
         Slot* s=&grid.slots[b][i];bool show=s->flat>=0;
         visibility(c,s->pane,show);
-        mem_write8(c,s->component+0x7c,show && (unsigned)s->flat/(grid.columns*3)==grid.page && !grid.scroll.active);
+        mem_write8(c,s->component+0x7c,show && (unsigned)s->flat/(grid.columns*3)==grid.page && !grid.scroll.active && channel_ready(c,s->flat));
     }
 }
 static uint32_t pane_for(unsigned flat) {
+    if(flat>=channel_capacity())return grid.hidden;
     for(unsigned b=0;b<3;b++)for(unsigned i=0;i<12;i++)
         if(grid.slots[b][i].flat==(int)flat)return grid.slots[b][i].pane;
     return grid.hidden;
@@ -227,6 +234,10 @@ static void footer_factors(float* sx,float* sy) {
 static bool footer_transform(CPUState* c,uint32_t pane) {
     for(unsigned n=0;n<grid.footer_count;n++) {
         Footer* f=&grid.footer[n];if(f->pane!=pane)continue;
+        if(!enabled || !fit) {
+            put(c,pane+0x2c,f->x);put(c,pane+0x30,f->y);
+            put(c,pane+0x44,f->sx);put(c,pane+0x48,f->sy);return true;
+        }
         unsigned phase=word(c,grid.scene+0xc0);
         if(!enabled || !fit || (phase>3 && (phase<10 || phase>13))) {
             put(c,pane+0x44,f->sx);put(c,pane+0x48,f->sy);
@@ -273,6 +284,7 @@ static int common(CPUState* c) {
     if(grid.call.active) {
         if(c->gpr[1]!=grid.call.sp)return 0; /* Other scheduled thread. */
         const unsigned stage=grid.call.stage;
+        if(stage>=20)return library_continue(c,stage);
         if(stage>=10 && stage<13)return guest_call(c,MAKE_LIST,grid.scene,stage-9,0,stage+1);
         if(stage==13){grid.loaded=true;return guest_call(c,REFRESH,grid.scene,grid.carrier,0,1);}
         if(stage==1 && grid.refresh_modules)return guest_call(c,RESTART_MODULES,grid.scene,0,0,2);
@@ -294,15 +306,19 @@ static int common(CPUState* c) {
         c->lr=grid.call.lr;c->gpr[3]=grid.call.object;grid.call.active=false;
         mem_write8(c,grid.scene+0x100,grid.page>0);mem_write8(c,grid.scene+0x101,grid.page+1<grid.pages);
         grid.refresh_modules=false;grid.refresh=grid.arrows=false;
-        if(!enabled || !fit){restore(c);return 0;}
+        if(!grid_requested()){restore(c);return 0;}
     }
     uint32_t scene=c->gpr[3];
     if(word(c,scene)!=0x8164e0b8)return 0;
     if(!grid.ready || grid.cpu!=c || grid.scene!=scene || grid.layout!=word(c,scene+0x68)) {
         if(!bind_scene(c,scene))return 0;
     }
+    library_catalog(c);
     geometry(c);
     map_slots(c);
+    if(library_poll(c))return 1;
+    if(library.load.active)return 0;
+    if(library_next(c))return 1;
     const unsigned phase=word(c,scene+0xc0);
     if((phase==1 || phase==3) && (grid.refresh || grid.arrows)) {
         grid.call.active=true;grid.call.lr=c->lr;grid.call.sp=c->gpr[1];grid.call.object=scene;
@@ -319,7 +335,7 @@ static int common(CPUState* c) {
     uint32_t object=word(c,scene+0x58);unsigned link=word(c,scene+0x60)&0xffff;
     for(unsigned n=0;object && n<49;n++) {
         if(word(c,object+0x1c)<4 && word(c,object+0x20)<12) {
-            mem_write32(c,object+0x28,pane_for(word(c,object+0x1c)*12+word(c,object+0x20)));
+            mem_write32(c,object+0x28,pane_for(logical_slot(word(c,object+0x1c)*12+word(c,object+0x20))));
             const unsigned offsets[]={0x30,0x38,0x40,0x48,0x60};
             for(unsigned j=0;j<5;j++) {
                 uint32_t layout=word(c,object+offsets[j]),pane=layout?word(c,layout+0x14):0;
@@ -364,7 +380,9 @@ bool wii_menu_grid_clip(CPUState* c,uint32_t scene,float* x,float* y) {
 }
 int wii_menu_grid_entry(CPUState* c,uint32_t pc) {
     if(pc==COMMON && grid.call.active && c->gpr[1]==grid.call.sp)return common(c);
-    if(!enabled || !fit)return 0;
+    library_refresh(c,pc);
+    if(library_meta(c,pc))return 1;
+    if(!grid_requested())return 0;
     if(c->cycles>=c->cycle_deadline)return 1;
     if(pc==COMMON)return common(c);
     if(!active(c))return 0;
@@ -372,37 +390,43 @@ int wii_menu_grid_entry(CPUState* c,uint32_t pc) {
     if(c->gpr[3]==grid.scene) {
         if(pc==REFRESH && grid.scroll.active && (word(c,grid.scene+0xc0)==12 || word(c,grid.scene+0xc0)==13)) {
             grid.page=grid.scroll.target;grid.anchor=grid.page*grid.columns*3;grid.carrier=grid.scroll.carrier;
+            save_anchor(grid.anchor);
             grid.scroll.active=false;grid.arrows=true;geometry(c);map_slots(c);grid.refresh=false;
         }
-        if(pc==0x813ad55c)return result(c,c->gpr[4]<4 && c->gpr[5]<12 && visible(c->gpr[4]*12+c->gpr[5]));
-        if(pc==0x813ad69c)return result(c,c->gpr[4]<4 && c->gpr[5]<12 && pane_for(c->gpr[4]*12+c->gpr[5])!=grid.hidden);
-        if(pc==0x813ade6c && c->gpr[4]<4 && c->gpr[5]<12)return result(c,pane_for(c->gpr[4]*12+c->gpr[5]));
+        if(pc==0x813ad55c)return result(c,c->gpr[4]<4 && c->gpr[5]<12 && visible(logical_slot(c->gpr[4]*12+c->gpr[5])));
+        if(pc==0x813ad69c)return result(c,c->gpr[4]<4 && c->gpr[5]<12 && pane_for(logical_slot(c->gpr[4]*12+c->gpr[5]))!=grid.hidden);
+        if(pc==0x813ade6c && c->gpr[4]<4 && c->gpr[5]<12)return result(c,pane_for(logical_slot(c->gpr[4]*12+c->gpr[5])));
         if(pc==0x813ad39c)return result(c,0); /* No neighboring page decorations. */
         if(pc==0x813ace78 && (c->gpr[5]&0xffff0000u)==ENCODED) {
-            unsigned flat=c->gpr[5]&0xffff;c->gpr[4]=flat/12;c->gpr[5]=flat%12;return 0;
+            unsigned flat=c->gpr[5]&0xffff;int physical=physical_slot(flat);
+            if(physical<0)return result(c,0);
+            c->gpr[4]=(unsigned)physical/12;c->gpr[5]=(unsigned)physical%12;return 0;
         }
         if(pc==0x813ae99c) {
             const char* n=(const char*)ptr(c,c->gpr[4],17);int b,i;
             if(n && memchr(n,0,17) && (i=name_slot(n,&b))>=0) {
-                int flat=flat_for(b,i);return result(c,flat>=0 && visible(flat) && (unsigned)flat/(grid.columns*3)==grid.page && !grid.scroll.active?ENCODED|(unsigned)flat:UINT32_MAX);
+                int flat=flat_for(b,i);return result(c,flat>=0 && visible(flat) && (unsigned)flat/(grid.columns*3)==grid.page && !grid.scroll.active && channel_ready(c,flat)?ENCODED|(unsigned)flat:UINT32_MAX);
             }
             return result(c,UINT32_MAX);
         }
         if(pc==0x813ada94) {
-            grid.selected=(int)(c->gpr[4]*12+c->gpr[5]);
-            return_anchor=grid.selected;return_anchor_valid=true;
+            grid.selected=logical_slot(c->gpr[4]*12+c->gpr[5]);
+            return_anchor=grid.selected;return_anchor_valid=grid.selected>=0;
+            if(grid.selected>=0)save_anchor(grid.selected);
         }
         if((pc==0x813adf18 || pc==0x813adf48) && grid.selected>=0 && word(c,grid.scene+0xc0)>=7 &&
-           c->gpr[4]==(unsigned)grid.selected%12) {
+           physical_slot(grid.selected)>=0 && c->gpr[4]==(unsigned)physical_slot(grid.selected)%12) {
             return result(c,pane_for(grid.selected));
         }
         if(pc==0x813ad8e0) {
+            if(library.load.active)return result(c,0);
             int direction=c->gpr[4]==12?-1:1;
             int target=(int)grid.page+direction;
             if(target<0 || target>=(int)grid.pages)return result(c,0);
             grid.scroll.active=true;grid.scroll.target=target;grid.scroll.direction=direction;grid.scroll.progress=0;
-            unsigned first=target*grid.columns*3,count=48-first;if(count>grid.columns*3)count=grid.columns*3;
-            grid.scroll.carrier=(first+(count-1)/2)/12;
+            unsigned first=target*grid.columns*3,count=channel_capacity()-first;if(count>grid.columns*3)count=grid.columns*3;
+            int middle=physical_slot(first+(count-1)/2);
+            grid.scroll.carrier=middle<0?grid.carrier:(unsigned)middle/12;
             return 0; /* Original 20-frame brlan scroll owns timing/easing. */
         }
     }
@@ -435,8 +459,8 @@ int wii_menu_grid_entry(CPUState* c,uint32_t pc) {
     c->gpr[dest]=max?grid.pages:grid.page;c->pc=pc+4;++c->cycles;return 1;
 }
 int wii_menu_grid_status(char* out,size_t capacity) {
-    return snprintf(out,capacity,"{\"ok\":true,\"enabled\":%s,\"ready\":%s,\"columns\":%u,\"rows\":3,\"page\":%u,\"pages\":%u,\"first\":%u,\"count\":%u,\"scene\":%u,\"width\":%u,\"height\":%u}",
-        enabled?"true":"false",grid.ready?"true":"false",grid.columns,grid.page,grid.pages,grid.first,grid.count,grid.scene,width,height);
+    return snprintf(out,capacity,"{\"ok\":true,\"enabled\":%s,\"ready\":%s,\"columns\":%u,\"rows\":3,\"page\":%u,\"pages\":%u,\"first\":%u,\"count\":%u,\"scene\":%u,\"width\":%u,\"height\":%u,\"capacity\":%u,\"populated\":%u,\"omitted\":%u,\"loading\":%s,\"library_error\":\"%s\"}",
+        enabled?"true":"false",grid.ready?"true":"false",grid.columns,grid.page,grid.pages,grid.first,grid.count,grid.scene,width,height,channel_capacity(),library.populated,library.omitted,library.load.active?"true":"false",library.error);
 }
 static int footer_sheet(CPUState* c,uint32_t pane) {
     const char* n=(const char*)ptr(c,pane+0xb4,17);if(!n || !memchr(n,0,17))return 0;

@@ -6,6 +6,37 @@
 #include "../src/menu_grid.c"
 #define CHECK(x) do {if(!(x)){fprintf(stderr,"FAIL %d: %s\n",__LINE__,#x);exit(1);}}while(0)
 static CPUState cpu;
+
+static uint64_t persisted_order[LIBRARY_MAX];static uint32_t persisted_anchor;
+static unsigned fixture_titles=80;static bool fixture_grows;
+bool wii_fs_menu_library_config(WiiFs* f,uint8_t* data,uint32_t capacity,uint32_t* size) {
+    (void)f;(void)data;(void)capacity;*size=0;return true;
+}
+bool wii_fs_menu_library_read(WiiFs* f,uint64_t out[LIBRARY_MAX],uint32_t* anchor) {
+    (void)f;memcpy(out,persisted_order,sizeof persisted_order);*anchor=persisted_anchor;return true;
+}
+bool wii_fs_menu_library_write(WiiFs* f,const uint64_t in[LIBRARY_MAX],uint32_t anchor) {
+    (void)f;memcpy(persisted_order,in,sizeof persisted_order);persisted_anchor=anchor;return true;
+}
+int32_t wii_es_titles(WiiFs* f,uint8_t* out,uint32_t cap,uint32_t* count) {
+    (void)f;*count=fixture_titles;
+    if(out && fixture_grows){*count=fixture_titles+1;return 0;}
+    if(out){CHECK(cap>=fixture_titles);for(unsigned n=0;n<fixture_titles;n++) {
+        uint64_t title=UINT64_C(0x1000141424300)+n;
+        for(unsigned b=0;b<8;b++)out[n*8+b]=(uint8_t)(title>>(56-b*8));
+    }}return 0;
+}
+int32_t wii_es_tmd_view(WiiFs* f,uint64_t title,uint8_t* out,uint32_t cap,uint32_t* size) {
+    (void)f;(void)out;(void)cap;if(title<UINT64_C(0x1000141424300) || title>=UINT64_C(0x1000141424300)+fixture_titles)return -1;
+    *size=0x6c;return 0;
+}
+int32_t wii_es_stored_contents(WiiFs* f,uint64_t t,uint8_t* out,uint32_t cap,uint32_t* count) {
+    (void)f;(void)t;(void)out;(void)cap;*count=1;return 0;
+}
+int32_t wii_es_ticket_views(WiiFs* f,uint64_t t,uint8_t* out,uint32_t cap,uint32_t* count) {
+    (void)f;(void)t;(void)out;(void)cap;*count=1;return 0;
+}
+
 u8* gcn_mem_resolve(CPUState* c,u32 a,u32* size) {
     a&=0x1fffffff;if(a>=c->ram_size){*size=0;return NULL;}*size=c->ram_size-a;return c->ram+a;
 }
@@ -16,10 +47,35 @@ void mem_write8_legacy(CPUState* c,u32 a,u8 v){mem_write8_cia(c,a,v,c->pc);}
 void mem_write16_legacy(CPUState* c,u32 a,u16 v){mem_write16_cia(c,a,v,c->pc);}
 void mem_write32_legacy(CPUState* c,u32 a,u32 v){mem_write32_cia(c,a,v,c->pc);}
 enum {SCENE=0x80001000,LAYOUT=0x80002000,GUI=0x80003000,PARENT=0x80004000};
+static unsigned mock_loads,mock_destroys;
+static void mock_remove(uint32_t object) {
+    uint32_t before=word(&cpu,object),after=word(&cpu,object+4);
+    if(before)mem_write32(&cpu,before+4,after);else mem_write32(&cpu,SCENE+0x58,after);
+    if(after)mem_write32(&cpu,after,before);else mem_write32(&cpu,SCENE+0x5c,before);
+}
+static void mock_append(unsigned physical) {
+    uint32_t object=0x800b0000+physical*0x200,tail=word(&cpu,SCENE+0x5c);
+    memset(cpu.ram+(object&0x1fffffff),0,0x200);
+    mem_write32(&cpu,object,tail);if(tail)mem_write32(&cpu,tail+4,object);else mem_write32(&cpu,SCENE+0x58,object);
+    mem_write32(&cpu,SCENE+0x5c,object);mem_write32(&cpu,object+0x18,3);
+    mem_write32(&cpu,object+0x1c,physical/12);mem_write32(&cpu,object+0x20,physical%12);
+}
 static void finish_calls(void) {
     unsigned calls=0;
     while(grid.call.active) {
         CHECK(++calls<=12);
+        if(cpu.pc==LIST_REMOVE)mock_remove(cpu.gpr[4]);
+        if(cpu.pc==DESTROY_OBJECT){CHECK(word(&cpu,cpu.gpr[4]+0xec)<=1);mock_destroys++;}
+        if(cpu.pc==LOAD_META) {
+            unsigned physical=cpu.gpr[4]*12+cpu.gpr[5];CHECK(physical<48);
+            cpu.gpr[27]=library.manager;cpu.gpr[28]=physical/12;cpu.gpr[29]=physical%12;
+            CHECK(library_meta(&cpu,0x813395b4));
+            memcpy(cpu.ram+(channel_record(physical)&0x1fffffff)+0x38,library.info[library.load.logical],16);
+            mem_write8(&cpu,channel_record(physical)+0x18,library.info[library.load.logical][0]!=0);
+            mem_write32(&cpu,channel_record(physical)+0x4c,1); /* callback deliberately outstanding */
+            mock_loads++;
+        }
+        if(cpu.pc==APPEND_OBJECT)mock_append(cpu.gpr[4]*12+cpu.gpr[5]);
         if(cpu.pc==GET_SCENE)cpu.gpr[3]=0x80080000;
         cpu.pc=COMMON;wii_menu_grid_entry(&cpu,COMMON);
     }
@@ -117,9 +173,106 @@ static void presentation(void) {
     mem_write32(&cpu,SCENE+0xc0,7);CHECK(wii_menu_grid_picture_tiles(&cpu,hand)==0);
     mem_write32(&cpu,SCENE+0xc0,1);wii_menu_grid_configure(false);CHECK(wii_menu_grid_picture_tiles(&cpu,hand)==0);
 }
+
+static void expanded_library(void) {
+    free(cpu.ram);cpu.ram_size=24*1024*1024;cpu.ram=calloc(1,cpu.ram_size);CHECK(cpu.ram);
+    CHECK(!wii_menu_grid_library_configure(0));CHECK(!wii_menu_grid_library_configure(3));
+    CHECK(!wii_menu_grid_library_configure(256));CHECK(wii_menu_grid_library_configure(2));
+    wii_menu_grid_library_attach((WiiFs*)1);init();
+    const unsigned manager=0x80090000,save=0x800a0000;
+    mem_write32(&cpu,0x81089008+0x84,manager);mem_write32(&cpu,0x81089008+0x94,save);
+    uint8_t stock[48][16]={0};stock[0][0]=1;stock[0][7]=15;
+    for(unsigned n=1;n<48;n++)title_info(stock[n],UINT64_C(0x1000141424300)+n-1);
+    memcpy(cpu.ram+(save&0x1fffffff)+0x30,stock,sizeof stock);
+    for(unsigned n=0;n<48;n++) {
+        uint32_t record=manager+12+n*0x70;
+        memcpy(cpu.ram+(record&0x1fffffff)+0x38,stock[n],16);mem_write32(&cpu,record+0x4c,2);
+    }
+    library_catalog(&cpu);CHECK(library.ready && library.populated==81 && library.capacity==96);
+    CHECK(info_title(library.info[48])==UINT64_C(0x1000141424300)+47);
+    CHECK(info_title(library.info[80])==UINT64_C(0x1000141424300)+79);
+    CHECK(info_title(library.info[81])==0);
+    const char shortcuts[]="95 0001000141424300\n80 -\n0 0001000141424300\n94 0x0001000141424300\n93 0001000141424300 extra\n";
+    library_shortcuts(shortcuts,sizeof shortcuts-1);
+    CHECK(info_title(library.info[95])==UINT64_C(0x1000141424300));
+    CHECK(!library.order[80] && library.reserved[80] && !library.info[80][0]);
+    CHECK(library.info[0][0]==1 && !library.info[94][0] && !library.info[93][0]);
+    CHECK(!memcmp(ptr(&cpu,save+0x30,sizeof stock),stock,sizeof stock));
+    wii_menu_grid_configure(false);wii_menu_grid_extent(1280,720,true);grid.cpu=&cpu;grid.scene=SCENE;grid.layout=LAYOUT;grid.ready=true;
+    geometry(&cpu);CHECK(grid.pages==8 && grid.columns==4);
+    /* Selection beyond 48 resolves to a genuine physical record, never page 4. */
+    library.resident[35]=70;grid.page=5;grid.anchor=60;geometry(&cpu);map_slots(&cpu);
+    cpu.gpr[3]=SCENE;cpu.gpr[5]=ENCODED|70;CHECK(!wii_menu_grid_entry(&cpu,0x813ace78));
+    CHECK(cpu.gpr[4]==2 && cpu.gpr[5]==11);
+    cpu.gpr[3]=SCENE;cpu.gpr[4]=2;cpu.gpr[5]=11;CHECK(!wii_menu_grid_entry(&cpu,0x813ada94));
+    CHECK(grid.selected==70 && return_anchor==70 && persisted_anchor==70);
+    /* Metadata loading substitutes a value, never the SaveData source bytes. */
+    library.load.active=library.load.override=true;library.load.physical=35;library.load.logical=70;
+    cpu.gpr[27]=manager;cpu.gpr[28]=2;cpu.gpr[29]=11;cpu.pc=0x813395b4;
+    CHECK(wii_menu_grid_entry(&cpu,0x813395b4));CHECK(cpu.pc==0x813395c8);
+    CHECK(cpu.gpr[9]==be32(library.info[70]+8) && cpu.gpr[8]==be32(library.info[70]+12));
+    CHECK(word(&cpu,cpu.gpr[1]+0x14)==be32(library.info[70]));
+    CHECK(!memcmp(ptr(&cpu,save+0x30,sizeof stock),stock,sizeof stock));
+    library.load.active=library.load.override=false;
+    return_anchor=3;return_anchor_valid=true;
+    CHECK(bind_scene(&cpu,SCENE) && grid.anchor==70); /* profile/page sidecar wins over a stale selection */
+    wii_menu_grid_configure(false);geometry(&cpu);
+    /* A Disc or live worker can never be selected for recycling. */
+    unsigned wanted[1]={70};grid.page=7;grid.first=84;geometry(&cpu);
+    for(unsigned n=1;n<48;n++)mem_write32(&cpu,manager+12+n*0x70+0x4c,1);
+    CHECK(library_victim(&cpu,wanted,1)==-1);
+    mem_write32(&cpu,manager+12+47*0x70+0x4c,2);CHECK(library_victim(&cpu,wanted,1)==47);
+    /* Run the production residency/continuation path with delayed callbacks.
+     * The scene owns exactly 48 original objects through repeated forward and
+     * reverse boundaries; no incomplete entry or active worker is destroyed. */
+    for(unsigned n=0;n<48;n++) {
+        mem_write32(&cpu,manager+12+n*0x70+0x4c,2);library.resident[n]=n;
+        mock_append(n);
+    }
+    grid.loaded=true;grid.refresh=grid.arrows=false;
+    for(unsigned pass=0;pass<6;pass++) {
+        unsigned page=(unsigned[]){4,5,6,7,4,0}[pass];grid.page=page;grid.anchor=page*12;
+        geometry(&cpu);map_slots(&cpu);
+        for(unsigned frame_number=0;frame_number<128;frame_number++) {
+            frame();
+            if(library.load.active && !library.load.override && !grid.call.active)
+                mem_write32(&cpu,channel_record(library.load.physical)+0x4c,2);
+        }
+        CHECK(!library.load.active);
+        for(unsigned logical=grid.first;logical<grid.first+grid.count;logical++) {
+            int physical=physical_slot(logical);CHECK(physical>=0 && physical<48);
+            CHECK(!memcmp(ptr(&cpu,channel_record(physical)+0x38,16),library.info[logical],16));
+        }
+        CHECK(library.resident[0]==0);
+        for(unsigned a=0;a<48;a++)for(unsigned b=a+1;b<48;b++)CHECK(library.resident[a]!=library.resident[b]);
+        CHECK(!memcmp(ptr(&cpu,save+0x30,sizeof stock),stock,sizeof stock));
+    }
+    CHECK(mock_loads>48 && mock_destroys==mock_loads);
+    CHECK(channel_ready(&cpu,grid.first));
+    int pending=physical_slot(grid.first);mem_write32(&cpu,channel_record(pending)+0x4c,1);
+    CHECK(!channel_ready(&cpu,grid.first));mem_write32(&cpu,channel_record(pending)+0x4c,2);
+    cpu.gpr[3]=manager;library_refresh(&cpu,0x81337c64);CHECK(library.ready);
+    mem_write8(&cpu,manager+0x1b80,1);library_refresh(&cpu,0x81337c64);CHECK(!library.ready);
+    for(unsigned n=0;n<48;n++)CHECK(library.resident[n]==(int)n);
+    CHECK(!memcmp(ptr(&cpu,save+0x30,sizeof stock),stock,sizeof stock));
+    /* Shrinking/reopening retains every stored overflow identity. */
+    uint64_t saved=persisted_order[70];wii_menu_grid_library_configure(1);
+    CHECK(library.capacity==96); /* latched until a new profile attachment */
+    wii_menu_grid_library_attach((WiiFs*)1);CHECK(library.capacity==48);
+    wii_menu_grid_library_configure(4);wii_menu_grid_library_attach((WiiFs*)1);
+    CHECK(library.capacity==192 && library.order[70]==saved && library.anchor==70);
+    /* A host inventory that grows between count and fetch cannot overrun its
+     * bounded buffer. It is retried on a later startup, without fabricated data. */
+    memset(persisted_order,0,sizeof persisted_order);persisted_anchor=0;fixture_grows=true;
+    wii_menu_grid_library_configure(2);wii_menu_grid_library_attach((WiiFs*)1);library_catalog(&cpu);
+    CHECK(library.ready && library.populated==48);fixture_grows=false;
+    wii_menu_grid_library_attach(NULL);wii_menu_grid_library_configure(1);
+    return_anchor_valid=false;
+}
+
 int main(void) {
     cpu.ram_size=1024*1024;cpu.ram=calloc(1,cpu.ram_size);CHECK(cpu.ram);
-    init();wii_menu_grid_extent(540,960,true);frame();CHECK(grid.ready && grid.columns==2 && grid.pages==8 && grid.count==6);
+    init();wii_menu_grid_extent(540,960,true);frame();CHECK(pane_for(UINT32_MAX)==grid.hidden);CHECK(grid.ready && grid.columns==2 && grid.pages==8 && grid.count==6);
     /* Original slot 5 is the last tile on the first portrait page. */
     uint32_t pane=pane_for(5);CHECK(pane);wii_menu_grid_transform(&cpu,pane);
     float x,y;tile_position(5,&x,&y);CHECK(fabsf(real(&cpu,pane+0x2c)*real(&cpu,PARENT+0x84)-x)<.001f);
@@ -178,5 +331,6 @@ int main(void) {
     wii_menu_grid_configure(false);CHECK(real(&cpu,pane+0x44)==1.f && real(&cpu,pane+0x48)==1.f);
     cpu.gpr[3]=SCENE;cpu.gpr[4]=0;cpu.gpr[5]=0;CHECK(!wii_menu_grid_entry(&cpu,0x813ad55c));
     presentation();
+    expanded_library();
     free(cpu.ram);puts("Menu grid mapping, paging, native continuations, backdrop matte, cursor proportions and stock restoration passed");return 0;
 }

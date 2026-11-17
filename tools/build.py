@@ -11,7 +11,7 @@ import sys
 
 ROOT=Path(__file__).resolve().parents[1]
 def main():
-    product=json.loads((ROOT/'product.json').read_text())
+    product=json.loads((ROOT/'product.json').read_text(encoding='utf-8'))
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--version',default=product['version'])
     parser.add_argument('--inputs','--inputs-dir',dest='inputs_dir',type=Path,required=True,
@@ -42,10 +42,10 @@ def main():
     result=subprocess.call(command)
     if result or args.check:return result
     metadata=args.build_dir/'build-products.json'
-    products=json.loads(metadata.read_text())
+    products=json.loads(metadata.read_text(encoding='utf-8'))
     products['readme']=str(ROOT/'README.md')
     products['consumer']=dict(product,source=str(ROOT))
-    metadata.write_text(json.dumps(products,indent=2)+'\n')
+    metadata.write_text(json.dumps(products,indent=2)+'\n',encoding='utf-8')
     shutil.copy2(ROOT/'LICENSE',Path(products['licenses_dir'])/'WiiMenuRecomp-GPL3.txt')
     shutil.copy2(ROOT/'LICENSING.md',Path(products['licenses_dir'])/'WiiMenuRecomp-LICENSING.md')
     if args.no_package:return 0
