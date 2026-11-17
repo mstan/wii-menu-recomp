@@ -12,7 +12,7 @@ the window determines the column count independently of library capacity.
 Without adaptive layout, expanded pages use four columns. The original sliding
 animation and neighboring column peeks remain. Rearranging channels inside the
 Menu is disabled while either grid experiment is active.
-The main grid's **Page X / Y** counter uses the original Menu font and follows
+The main grid's **X / Y** page counter uses the original Menu font and follows
 the live layout. Resizing recalculates the page total while keeping the current
 channel position nearby. The counter stays hidden on other screens and with
 stock capacity; page changes follow the original sliding transition.

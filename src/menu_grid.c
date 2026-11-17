@@ -470,7 +470,7 @@ bool wii_menu_grid_page_label(CPUState* c,uint32_t pane,WiiMenuTextLabel* out) {
     for(unsigned n=0;n<grid.footer_count;n++) {
         const Footer* footer=&grid.footer[n];
         if(footer->kind!=6 || footer->pane!=pane)continue;
-        char text[32];snprintf(text,sizeof text,"Page %u / %u",grid.page+1,grid.pages);
+        char text[32];snprintf(text,sizeof text,"%u / %u",grid.page+1,grid.pages);
         memset(out,0,sizeof *out);
         for(unsigned i=0;text[i];i++)out->text[i]=(uint8_t)text[i];
         float sx=1,sy=1;if(enabled && fit)footer_factors(&sx,&sy);

@@ -283,7 +283,7 @@ static void page_indicator(void) {
         char text[32],expected[32];unsigned length=0;
         for(;label.text[length];length++)text[length]=(char)label.text[length];
         text[length]=0;
-        snprintf(expected,sizeof expected,"Page %u / %u",totals[n],totals[n]);
+        snprintf(expected,sizeof expected,"%u / %u",totals[n],totals[n]);
         CHECK(!strcmp(text,expected) && label.x==0 && label.scale==.6f && isfinite(label.y));
         CHECK(label.y>-224 && label.y<-190); /* clear footer center, inside the view */
         CHECK(grid.first<=6143 && grid.first+grid.count>6143);

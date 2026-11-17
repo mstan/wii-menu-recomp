@@ -40,7 +40,7 @@ typing uses the USB keyboard peripheral independently of Wii Remote buttons.
 by default. Choose 2x through 128x the stock 48 positions and
 restart Wii Menu. Installed overflow channels appear after the stock positions;
 the three rows, adaptive columns and original page transitions remain.
-The main grid shows a Wii-style **Page X / Y** counter that recalculates when
+The main grid shows a Wii-style **X / Y** page counter that recalculates when
 resizing changes the column count.
 [Library setup, ordering, shortcuts and limits](docs/channel-library.md) explains
 how this stays separate from native saves and stock channel order. Execution
