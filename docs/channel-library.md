@@ -4,6 +4,8 @@
 mode keeps 48 positions. Its capacity choices are 2x (96), 4x (192), 8x (384),
 16x (768), 32x (1,536), 64x (3,072) and 128x (6,144).
 Restart Wii Menu after changing this feature or its capacity.
+The enabled state and selected capacity persist in `channel-library.cfg` in
+the application's per-user preferences folder.
 
 The original three rows remain. With Adaptive channel grid and Fit to screen,
 the window determines the column count independently of library capacity.
