@@ -270,6 +270,32 @@ static void expanded_library(void) {
     return_anchor_valid=false;
 }
 
+static void page_indicator(void) {
+    init();wii_menu_grid_extent(1280,720,true);frame();
+    const uint32_t date=0x8007b000;put(&cpu,date+0xa0,-205);footer_add(&cpu,date,6);
+    WiiMenuTextLabel label;CHECK(!wii_menu_grid_page_label(&cpu,date,&label));
+    library.capacity=6144;grid.anchor=6143;grid.columns=0;geometry(&cpu);
+    const unsigned sizes[][2]={{1280,720},{540,960},{1960,720},{2082,720}};
+    const unsigned totals[]={410,1024,293,256};
+    for(unsigned n=0;n<4;n++) {
+        wii_menu_grid_extent(sizes[n][0],sizes[n][1],true);geometry(&cpu);
+        CHECK(wii_menu_grid_page_label(&cpu,date,&label));
+        char text[32],expected[32];unsigned length=0;
+        for(;label.text[length];length++)text[length]=(char)label.text[length];
+        text[length]=0;
+        snprintf(expected,sizeof expected,"Page %u / %u",totals[n],totals[n]);
+        CHECK(!strcmp(text,expected) && label.x==0 && label.scale==.6f && isfinite(label.y));
+        CHECK(grid.first<=6143 && grid.first+grid.count>6143);
+    }
+    /* The page count follows committed layout during the original slide. */
+    grid.scroll.active=true;wii_menu_grid_extent(540,960,true);geometry(&cpu);CHECK(grid.pages==256);
+    grid.scroll.active=false;geometry(&cpu);CHECK(grid.pages==1024);
+    CHECK(!wii_menu_grid_page_label(&cpu,date+4,&label));
+    mem_write32(&cpu,SCENE+0xc0,7);CHECK(!wii_menu_grid_page_label(&cpu,date,&label));
+    mem_write32(&cpu,SCENE+0xc0,12);CHECK(wii_menu_grid_page_label(&cpu,date,&label));
+    library.capacity=48;CHECK(!wii_menu_grid_page_label(&cpu,date,&label));
+    wii_menu_grid_reset();
+}
 int main(void) {
     cpu.ram_size=1024*1024;cpu.ram=calloc(1,cpu.ram_size);CHECK(cpu.ram);
     init();wii_menu_grid_extent(540,960,true);frame();CHECK(pane_for(UINT32_MAX)==grid.hidden);CHECK(grid.ready && grid.columns==2 && grid.pages==8 && grid.count==6);
@@ -332,5 +358,6 @@ int main(void) {
     cpu.gpr[3]=SCENE;cpu.gpr[4]=0;cpu.gpr[5]=0;CHECK(!wii_menu_grid_entry(&cpu,0x813ad55c));
     presentation();
     expanded_library();
+    page_indicator();
     free(cpu.ram);puts("Menu grid mapping, paging, native continuations, backdrop matte, cursor proportions and stock restoration passed");return 0;
 }

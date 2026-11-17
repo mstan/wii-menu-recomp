@@ -5,6 +5,7 @@
  * Offsets and seams: annotations/wii-menu-43u.json, original SHA1 26116613... . */
 #include <wiillr/menu_grid.h>
 #include <wiillr/menu_picture.h>
+#include <wiillr/menu_text.h>
 #include <cpu/interpreter.h>
 #include <memory/memory.h>
 #include <math.h>
@@ -461,6 +462,23 @@ int wii_menu_grid_entry(CPUState* c,uint32_t pc) {
 int wii_menu_grid_status(char* out,size_t capacity) {
     return snprintf(out,capacity,"{\"ok\":true,\"enabled\":%s,\"ready\":%s,\"columns\":%u,\"rows\":3,\"page\":%u,\"pages\":%u,\"first\":%u,\"count\":%u,\"scene\":%u,\"width\":%u,\"height\":%u,\"capacity\":%u,\"populated\":%u,\"omitted\":%u,\"loading\":%s,\"library_error\":\"%s\"}",
         enabled?"true":"false",grid.ready?"true":"false",grid.columns,grid.page,grid.pages,grid.first,grid.count,grid.scene,width,height,channel_capacity(),library.populated,library.omitted,library.load.active?"true":"false",library.error);
+}
+bool wii_menu_grid_page_label(CPUState* c,uint32_t pane,WiiMenuTextLabel* out) {
+    if(!out || channel_capacity()<=48 || !active(c) || !grid.pages)return false;
+    const unsigned phase=word(c,grid.scene+0xc0);
+    if(phase>3 && phase!=12 && phase!=13)return false;
+    for(unsigned n=0;n<grid.footer_count;n++) {
+        const Footer* footer=&grid.footer[n];
+        if(footer->kind!=6 || footer->pane!=pane)continue;
+        char text[32];snprintf(text,sizeof text,"Page %u / %u",grid.page+1,grid.pages);
+        memset(out,0,sizeof *out);
+        for(unsigned i=0;text[i];i++)out->text[i]=(uint8_t)text[i];
+        float sx=1,sy=1;if(enabled && fit)footer_factors(&sx,&sy);
+        (void)sx;
+        out->x=0;out->y=-228.f+(footer->gy+228.f+80.f)*sy;out->scale=.6f;
+        return true;
+    }
+    return false;
 }
 static int footer_sheet(CPUState* c,uint32_t pane) {
     const char* n=(const char*)ptr(c,pane+0xb4,17);if(!n || !memchr(n,0,17))return 0;
