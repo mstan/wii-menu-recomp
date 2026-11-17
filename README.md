@@ -31,7 +31,7 @@ retain their original layouts. Android support is not implied.
 
 <img src="docs/images/wii-menu-fit-portrait.png" width="320" alt="Fit to screen with two columns and three rows in a portrait window">
 
-[Setup, controls and peripherals](https://github.com/mstan/wiillr/blob/49639560c94bc2a3115c50acc93a2306763b51d1/docs/wii-menu.md)
+[Setup, controls and peripherals](https://github.com/mstan/wiillr/blob/0eb50a7fde1b3f20e92b07b3d02cdc0530c2f5f4/docs/wii-menu.md)
 include four Wii Remote assignments, two USB ports and an SD Card slot. Keyboard
 typing uses the USB keyboard peripheral independently of Wii Remote buttons.
 
@@ -65,7 +65,7 @@ git submodule update --init wiillr
 These are maintainer source-build commands. The generated-code input bundle is
 private; a public clone and a NAND backup alone do not currently supply it.
 Use the matching native toolchain and qualified build inputs described in the
-engine's [build guide](https://github.com/mstan/wiillr/blob/49639560c94bc2a3115c50acc93a2306763b51d1/docs/building.md).
+engine's [build guide](https://github.com/mstan/wiillr/blob/0eb50a7fde1b3f20e92b07b3d02cdc0530c2f5f4/docs/building.md).
 
 Windows PowerShell:
 
@@ -94,7 +94,7 @@ It does not point to a NAND or game folder.
 Build working files default to `build/HOST-ARCH` and archives to `dist`.
 Use `--build-dir` and `--output-dir` to override them. Add `--check` to validate
 the input bundle and basic prerequisites without compiling or launching a game. The engine's
-[argument reference](https://github.com/mstan/wiillr/blob/49639560c94bc2a3115c50acc93a2306763b51d1/docs/building.md#build-arguments)
+[argument reference](https://github.com/mstan/wiillr/blob/0eb50a7fde1b3f20e92b07b3d02cdc0530c2f5f4/docs/building.md#build-arguments)
 defines valid products, inputs, versions and common errors.
 
 `product.json` owns the product identity and default version. `tools/build.py`
@@ -108,5 +108,5 @@ remain pending.
 
 The provider and consumer build scripts use [GPLv3 or later](LICENSE).
 [Licensing details](LICENSING.md) preserve upstream terms and earlier grants. The engine's
-[Menu annotation guide](https://github.com/mstan/wiillr/blob/49639560c94bc2a3115c50acc93a2306763b51d1/docs/wii-menu-references.md)
+[Menu annotation guide](https://github.com/mstan/wiillr/blob/0eb50a7fde1b3f20e92b07b3d02cdc0530c2f5f4/docs/wii-menu-references.md)
 records the original-version identities and reverse-engineering references.
