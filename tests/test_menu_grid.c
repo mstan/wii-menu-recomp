@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Synthetic original-scene and GUI fixture; no firmware bytes. Checks input
  * routing, native-call continuations, paging and transform/hitbox geometry. */
 #define WIILLR_MENU_TRANSFORM 1

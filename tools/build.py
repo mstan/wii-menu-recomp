@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Build the Wii Menu consumer through its pinned engine's platform driver."""
 from pathlib import Path
 import argparse
@@ -35,7 +36,8 @@ def main():
     products['readme']=str(ROOT/'README.md')
     products['consumer']=dict(product,source=str(ROOT))
     metadata.write_text(json.dumps(products,indent=2)+'\n')
-    shutil.copy2(ROOT/'LICENSE',Path(products['licenses_dir'])/'WiiMenuRecomp-MIT.txt')
+    shutil.copy2(ROOT/'LICENSE',Path(products['licenses_dir'])/'WiiMenuRecomp-GPL3.txt')
+    shutil.copy2(ROOT/'LICENSING.md',Path(products['licenses_dir'])/'WiiMenuRecomp-LICENSING.md')
     if args.no_package:return 0
     return subprocess.call([sys.executable,str(ROOT/'tools/package.py'),
                             '--build-dir',str(args.build_dir.resolve()),'--output-dir',str(args.output_dir.resolve())])

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Package this consumer's explicit native outputs through its pinned engine."""
 from pathlib import Path
 import argparse
@@ -25,10 +26,11 @@ def main():
         raise ValueError('Build metadata belongs to a different consumer')
     # The engine package stores documentation images beside its README.
     readme=build/'WiiMenuRecomp-README.md'
-    readme.write_text((ROOT/'README.md').read_text().replace('docs/images/','images/').replace('](LICENSE)','](LICENSES/WiiMenuRecomp-MIT.txt)'))
+    readme.write_text((ROOT/'README.md').read_text().replace('docs/images/','images/').replace('](LICENSE)','](LICENSES/WiiMenuRecomp-GPL3.txt)'))
     metadata['readme']=str(readme)
     (build/'build-products.json').write_text(json.dumps(metadata,indent=2)+'\n')
-    shutil.copy2(ROOT/'LICENSE',output_path(metadata['licenses_dir'])/'WiiMenuRecomp-MIT.txt')
+    shutil.copy2(ROOT/'LICENSE',output_path(metadata['licenses_dir'])/'WiiMenuRecomp-GPL3.txt')
+    shutil.copy2(ROOT/'LICENSING.md',output_path(metadata['licenses_dir'])/'WiiMenuRecomp-LICENSING.md')
     command=[sys.executable,str(ROOT/'wiillr/tools/package_release.py'),
              '--repo',str(ROOT),'--product',product['engine_product'],
              '--version',metadata['version'],'--arch',metadata['arch'],

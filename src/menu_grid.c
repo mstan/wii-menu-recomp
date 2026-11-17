@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: MIT */
+/* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Original 4.3U scene objects, NW4R panes and GUI components remain the owners
  * of channels, input and title transitions. This adapter changes presentation;
  * it never writes the channel manager's persistent page/index arrays.
