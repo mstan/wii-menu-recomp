@@ -18,3 +18,8 @@ terms do not apply to this runtime or its build scripts.
 Packages carry the consumer license as LICENSES/WiiMenuRecomp-GPL3.txt.
 Earlier commits and release archives retain their supplied licenses; this
 prospective policy does not revoke earlier grants.
+
+The independent `tools/annotate_wii_menu.py` and its isolated
+`tests/test_wii_menu_annotations.py` retain PolyForm Noncommercial 1.0.0.
+See `LICENSES/PolyForm-Noncommercial-1.0.0.txt`. These terms apply only to
+those standalone inspection files, not to the GPL runtime or its build.

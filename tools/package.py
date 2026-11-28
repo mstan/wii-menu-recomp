@@ -36,7 +36,7 @@ def main():
     shutil.copy2(ROOT/'LICENSE',output_path(metadata['licenses_dir'])/'WiiMenuRecomp-GPL3.txt')
     shutil.copy2(ROOT/'LICENSING.md',output_path(metadata['licenses_dir'])/'WiiMenuRecomp-LICENSING.md')
     command=[sys.executable,str(ROOT/'wiillr/tools/package_release.py'),
-             '--repo',str(ROOT),'--product',product['engine_product'],
+             '--product-file',str(ROOT/'product.json'),'--repo',str(ROOT),'--product',product['engine_product'],
              '--version',metadata['version'],'--arch',metadata['arch'],
              '--build-dir',str(build),'--output-dir',str(args.output_dir.resolve()),
              '--inputs-dir',str(output_path(metadata['inputs_dir'])),'--native-exe',str(output_path(metadata['native_exe'])),

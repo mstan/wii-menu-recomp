@@ -1,3 +1,6 @@
 [submodule "wiillr"]
 	path = wiillr
 	url = https://github.com/mstan/wiillr.git
+[submodule "external/MegaMan9Recomp"]
+	path = external/MegaMan9Recomp
+	url = https://github.com/mstan/MegaMan9Recomp.git

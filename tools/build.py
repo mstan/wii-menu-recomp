@@ -31,14 +31,13 @@ def main():
     args.build_dir=(args.build_dir or ROOT/'build'/(host+'-'+machine)).resolve()
     engine=ROOT/'wiillr'
     command=[sys.executable,str(engine/'tools/build.py'),'--product',product['engine_product'],
-             '--version',args.version,'--inputs-dir',str(args.inputs_dir.resolve()),
+             '--product-file',str(ROOT/'product.json'),'--version',args.version,'--inputs-dir',str(args.inputs_dir.resolve()),
              '--build-dir',str(args.build_dir.resolve()),'--output-dir',str(args.output_dir.resolve()),
              '--jobs',str(args.jobs),'--no-package']
     if args.check:command+=['--check']
     if args.inputs_sha256:command+=['--inputs-sha256',args.inputs_sha256]
     if args.arch:command+=['--arch',args.arch]
     for value in args.cmake_definition:command+=['--cmake-definition',value]
-    command+=['--cmake-definition','WIILLR_MENU_GRID_SOURCE='+str(ROOT/product['provider'])]
     result=subprocess.call(command)
     if result or args.check:return result
     metadata=args.build_dir/'build-products.json'
