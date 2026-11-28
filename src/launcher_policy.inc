@@ -70,7 +70,7 @@ bool wii_launcher_menu_session(const char* image) {
 
 static void menu_identity(const WiiNandSetupInfo* info) {
     snprintf(menu_system_status,sizeof menu_system_status,"%s%s%s",
-        info->menu_label,info->region_label[0]?" Â· ":"",info->region_label);
+        info->menu_label,info->region_label[0]?" · ":"",info->region_label);
 }
 static int import_menu_system(const char* source,char* out,size_t out_capacity,
                               char* error,size_t error_capacity) {
