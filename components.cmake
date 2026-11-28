@@ -42,7 +42,9 @@ if(NOT WIILLR_MENU_FRAME MATCHES "^(none|reference|native)$" OR
    (NOT WIILLR_MENU_FRAME STREQUAL "none" AND WIILLR_MENU_PICTURES STREQUAL "none"))
   message(FATAL_ERROR "Menu frame ownership requires its native pane recording owner")
 endif()
-set(WIILLR_MENU_GRID_SOURCE "${WIILLR_MENU_ROOT}/src/menu_grid.c")
+if(NOT WIILLR_MENU_GRID_SOURCE)
+  set(WIILLR_MENU_GRID_SOURCE "${WIILLR_MENU_ROOT}/src/menu_grid.c")
+endif()
 set_property(SOURCE "${WIILLR_MENU_ROOT}/src/menu_frame_hook.c" "${WIILLR_MENU_GRID_SOURCE}" APPEND PROPERTY COMPILE_DEFINITIONS
   WIILLR_MENU_FRAME_MODE=$<STREQUAL:${WIILLR_MENU_FRAME},native>)
 option(WIILLR_MENU_TRANSFORM "Certified zero-angle Menu Pane matrix stage" OFF)
@@ -58,4 +60,3 @@ target_sources(wii_boot PRIVATE "${WIILLR_MENU_GRID_SOURCE}")
 set_property(SOURCE src/gx.c APPEND PROPERTY COMPILE_DEFINITIONS
   WIILLR_MENU_FRAME_ACTIVE=$<NOT:$<STREQUAL:${WIILLR_MENU_FRAME},none>>)
 
-include("${WIILLR_MM9_ROOT}/components.cmake")

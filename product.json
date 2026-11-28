@@ -26,5 +26,12 @@
       "cache"
     ],
     "empty_stderr": true
-  }
+  },
+  "source_providers": [
+    {
+      "name": "mega-man-9",
+      "path": "external/MegaMan9Recomp",
+      "repository": "https://github.com/mstan/MegaMan9Recomp.git"
+    }
+  ]
 }

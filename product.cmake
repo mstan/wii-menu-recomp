@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 set(WIILLR_MENU_ROOT "${CMAKE_CURRENT_LIST_DIR}")
-set(WIILLR_MM9_ROOT "${WIILLR_MENU_ROOT}/external/MegaMan9Recomp")
+if(NOT WIILLR_MM9_ROOT)
+  set(WIILLR_MM9_ROOT "${WIILLR_MENU_ROOT}/external/MegaMan9Recomp")
+endif()
 if(NOT EXISTS "${WIILLR_MM9_ROOT}/components.cmake")
   message(FATAL_ERROR "Initialize the pinned Mega Man 9 title provider")
 endif()
@@ -17,6 +19,7 @@ set(WIILLR_PRODUCT_LAUNCHER_SOURCES "${WIILLR_MM9_ROOT}/src/launcher_mods.c")
 set(WIILLR_PRODUCT_TESTS "${WIILLR_MENU_ROOT}/tests.cmake")
 macro(wiillr_product_components)
   include("${WIILLR_MENU_ROOT}/components.cmake")
+  include("${WIILLR_MM9_ROOT}/components.cmake")
 endmacro()
 
 set_property(SOURCE src/launcher.c "${WIILLR_MENU_ROOT}/tests/test_launcher_window.c" APPEND PROPERTY COMPILE_DEFINITIONS "WIILLR_LAUNCHER_POLICY=\"${WIILLR_LAUNCHER_POLICY}\"" "WIILLR_MM9_LAUNCHER_TITLE=\"${WIILLR_MM9_ROOT}/src/launcher_title.inc\"")
